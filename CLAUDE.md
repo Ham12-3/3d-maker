@@ -17,7 +17,7 @@ node scripts/curate-kenney.mjs <dir>   # rebuild public/assets/kenney from extra
 
 Before calling a phase done: `pnpm typecheck && pnpm lint && pnpm test` must all pass.
 
-`.env.local` needs `ANTHROPIC_API_KEY` for the agent (without it `/api/agent` returns a clear 500) and `POLYPIZZA_API_KEY` for online models (without it search returns nothing and objects fall back to primitives).
+`.env.local` needs `ANTHROPIC_API_KEY` for the agent (without it `/api/agent` returns a clear 500), `POLYPIZZA_API_KEY` for online models (without it objects fall back to primitives) and optionally `OPENAI_API_KEY` for the default speech engine (without it voice uses the browser's speech recognition).
 
 ## Layout
 
@@ -27,6 +27,7 @@ src/
     api/agent/            Claude proxy (streaming)
     api/assets/search/    Poly Pizza search proxy (cached a day)
     api/assets/file/[id]/ Poly Pizza GLB proxy (key stays on the server)
+    api/stt/token/        OpenAI speech: GET availability, POST mints a 10-minute client secret
   agent/          config, system prompt, request builder, summary, client loop, judge, status, tools/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
@@ -34,13 +35,14 @@ src/
   scene/          World schema, default world, store, ops, terrain (height field + lake carving)
   render/         R3F: Stage, World, Terrain, SkySystem, nodes/ (Primitive, AssetModel, Scatter, Lake, PathRibbon, Fireflies), camera/
   ui/             CommandBar, Toolbar, Credits, DevPanel, DevOverlay, shortcuts
+  voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
   lib/            seeded RNG, simplex noise, rate limiter, TTL cache
 evals/            cases/*.json, checks, base worlds, run.test.ts, results/
 public/assets/kenney/   curated CC0 GLBs + manifest.json (sizes in metres)
 scripts/          curate-kenney.mjs
 ```
 
-Planned (not built yet): `voice/`, visual critique, macros, persistence.
+Planned (not built yet): local Whisper engine (optional), visual critique, macros, persistence.
 
 ## Architecture rules
 
@@ -72,6 +74,16 @@ Planned (not built yet): `voice/`, visual critique, macros, persistence.
 - **Poly Pizza API v1.1:** `https://api.poly.pizza/v1.1/search/{kw}?Limit&License=1` (1 = CC0, 0 = CC-BY), header `x-auth-token`. The token is also required for files on `static.poly.pizza`, so GLBs are served by `/api/assets/file/[id]`, which only ever fetches `https://static.poly.pizza/*.glb`. Animated and >60k-tri models are filtered out. CC-BY attribution is stored on the node and listed in Credits.
 - **Size semantics:** an asset node's `transform.scale` is its size box in metres (same as primitives). `AssetModel` normalises the GLB to bottom-centre and scales it uniformly to fit the box. Kit models keep their manifest proportions scaled to the requested height; online models fit the requested box.
 - Instanced nature uses kit models: one `InstancedMesh` per (variant, mesh part). Forest species: pine, mixed, deciduous, autumn, palm, dead, snowy.
+
+## Voice
+
+- **One interface** (`voice/transcriber.ts`): `start`, `stop` (resolves after `onFinal`), `onPartial`, `onFinal`, `onError`, optional `level`, `dispose`.
+- **Engine choice** (`voice/useVoice.ts`): OpenAI when `GET /api/stt/token` says the server has a key, else the browser's SpeechRecognition, else typing only. If OpenAI fails to connect, it falls back to browser speech.
+- **OpenAI engine** (`voice/openai.ts`): `gpt-live-transcribe` over WebRTC. The server mints an ephemeral secret (`POST /v1/realtime/client_secrets`, session `type: "transcription"`, `turn_detection: null`, keyword hints from the scene); the browser POSTs its SDP offer to `/v1/realtime/calls`. The connection opens on first press and stays warm; between presses the mic track is disabled, and each press sends `input_audio_buffer.clear` first. Release waits 200 ms for the speech tail, mutes, sends `input_audio_buffer.commit` and waits for `conversation.item.input_audio_transcription.completed` for that item (8 s timeout falls back to the partial). Keywords are refreshed with `session.update` when the scene changes.
+- **Web Speech engine** (`voice/webspeech.ts`): fresh recognition per press. No phrase hints: Chrome fails with `phrases-not-supported` unless recognition is on-device.
+- **Push-to-talk** (`voice/controller.ts`): idle → connecting → listening → transcribing → idle. Taps under 250 ms are discarded, a release during connect stops as soon as the engine is ready, presses while the agent is busy are ignored. Hold Space (when not typing) or hold the mic button; window blur releases.
+- **Latency:** `runCommand(text, { speechEndedAt })` records transcript time and speech-end-to-first-change; the dev overlay shows both.
+- The Claude desktop Browser pane blocks microphones; test voice in a real browser.
 
 ## Layout solver
 
@@ -107,9 +119,9 @@ Planned (not built yet): `voice/`, visual critique, macros, persistence.
 - **Prompt caching:** `cache_control` on the system block caches tools + system. Keep both byte-identical between requests. The server logs `cache_read` per request.
 - **Kenney kits:** Nature, Holiday and Survival (CC0). The Holiday Kit's cabin is modular pieces, so cabins/houses come from Poly Pizza.
 - **Fog guidance:** densities are tuned to scene scale (0.012 misty); exp2 fog hides beyond ~0.85/density metres.
-- **Speech to text (Phase 3):** OpenAI `gpt-live-transcribe` over WebRTC with `keywords` hints; verify the ephemeral-token endpoint then.
+- **Speech to text:** OpenAI `gpt-live-transcribe` (the docs' recommended streaming model) over WebRTC. No `audio.format` in the session (WebRTC negotiates it in SDP) and no `delay` (the docs conflict on support). Raw `fetch`, no OpenAI SDK dependency. The local Whisper engine (Transformers.js) is not built: optional in the brief, needs a new dependency and is slow on a CPU-only laptop.
 - **Styling:** Tailwind v4, `glass` utility for overlays.
-- **Dev affordances:** `window.__scene` exposes the store; DevPanel (top right) for manual edits; DevOverlay (top left) shows fps, draw calls, triangles, DPR and the last command's timings. drei `PerformanceMonitor` lowers DPR (0.75-1.75) when frame rate drops.
+- **Dev affordances:** `window.__scene` and `window.__interaction` expose the stores; DevPanel (top right) for manual edits; DevOverlay (top left) shows fps, draw calls, triangles, DPR and the last command's timings. drei `PerformanceMonitor` lowers DPR (0.75-1.75) when frame rate drops.
 
 ## Known issues
 

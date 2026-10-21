@@ -2,7 +2,9 @@
 
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
+import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
+import { useVoice } from "@/voice/useVoice";
 import { CommandBar } from "./CommandBar";
 import { Credits } from "./Credits";
 import { DevOverlay } from "./DevOverlay";
@@ -17,11 +19,12 @@ const Stage = dynamic(() => import("@/render/Stage"), {
 
 export function App() {
   useShortcuts();
+  useVoice();
 
   useEffect(() => {
     // Handy for manual edits from the console: __scene.getState().edit(...)
     if (process.env.NODE_ENV === "development") {
-      (window as unknown as { __scene: typeof sceneStore }).__scene = sceneStore;
+      Object.assign(window, { __scene: sceneStore, __interaction: useInteraction });
     }
   }, []);
 

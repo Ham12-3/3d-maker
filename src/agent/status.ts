@@ -8,7 +8,14 @@ type AgentStatus = {
   activity: string | null;
   say: string | null;
   error: string | null;
-  lastTurn: (TurnResult & { command: string }) | null;
+  lastTurn:
+    | (TurnResult & {
+        command: string;
+        /** Voice only: key release to transcript ready, and to first visible change. */
+        transcribeMs?: number;
+        speechToFirstChangeMs?: number;
+      })
+    | null;
   abort: AbortController | null;
 };
 

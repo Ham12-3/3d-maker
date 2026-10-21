@@ -6,10 +6,18 @@ import { sceneStore } from "@/scene/store";
 import { requestAgent, runAgentTurn } from "./loop";
 import { useAgentStatus } from "./status";
 
-/** Run one command through the agent, wired to the app's store, camera and status line. */
-export async function runCommand(command: string): Promise<void> {
+/**
+ * Run one command through the agent, wired to the app's store, camera and
+ * status line. For voice, `speechEndedAt` (performance.now() at key release)
+ * lets us report speech-end-to-first-change latency.
+ */
+export async function runCommand(
+  command: string,
+  opts: { speechEndedAt?: number } = {},
+): Promise<void> {
   const text = command.trim();
   if (!text || useAgentStatus.getState().running) return;
+  const turnStartedAt = performance.now();
 
   const abort = new AbortController();
   useAgentStatus.setState({
@@ -49,7 +57,19 @@ export async function runCommand(command: string): Promise<void> {
     abort: null,
     activity: null,
     error: result.status === "error" ? (result.error ?? "Something went wrong") : null,
-    lastTurn: { ...result, command: text },
+    lastTurn: {
+      ...result,
+      command: text,
+      ...(opts.speechEndedAt !== undefined
+        ? {
+            transcribeMs: turnStartedAt - opts.speechEndedAt,
+            speechToFirstChangeMs:
+              result.firstChangeMs === undefined
+                ? undefined
+                : turnStartedAt - opts.speechEndedAt + result.firstChangeMs,
+          }
+        : {}),
+    },
   });
 }
 

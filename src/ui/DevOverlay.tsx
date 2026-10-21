@@ -2,11 +2,13 @@
 
 import { useAgentStatus } from "@/agent/status";
 import { usePerf } from "@/render/perf";
+import { useVoiceStatus } from "@/voice/status";
 
 /** Dev-only stats: frame rate, draw calls, triangles, and the last command's timings. */
 export function DevOverlay() {
   const { fps, calls, triangles, dpr } = usePerf();
   const last = useAgentStatus((s) => s.lastTurn);
+  const provider = useVoiceStatus((s) => s.provider);
   const colour = fps >= 55 ? "text-emerald-300" : fps >= 40 ? "text-amber-300" : "text-red-300";
 
   return (
@@ -22,6 +24,13 @@ export function DevOverlay() {
           {last.judge?.fixed.length ? ` · judge fixed ${last.judge.fixed.length}` : ""}
         </div>
       )}
+      {last?.transcribeMs !== undefined && (
+        <div>
+          voice: transcript {last.transcribeMs.toFixed(0)}ms · speech end → first change{" "}
+          {last.speechToFirstChangeMs?.toFixed(0) ?? "-"}ms
+        </div>
+      )}
+      <div>voice: {provider ?? "…"}</div>
     </div>
   );
 }
