@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useInteraction } from "@/scene/interaction";
 import { useScene } from "@/scene/store";
 import { Primitive } from "./nodes/Primitive";
+import { PointerMarker } from "./PointerMarker";
 import { SkySystem } from "./SkySystem";
 import { Terrain } from "./Terrain";
 
@@ -16,6 +17,7 @@ export function World() {
     <>
       <SkySystem env={env} />
       <Terrain terrain={env.terrain} />
+      <PointerMarker />
       {nodeIds.map((id) => (
         <NodeView key={id} id={id} />
       ))}

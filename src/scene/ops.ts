@@ -63,16 +63,24 @@ export function setPosition(id: string, position: Vec3): Recipe {
   };
 }
 
-/** Next readable id for a base name: "box" -> "box_3" if box_1 and box_2 exist. */
-export function nextNodeId(world: World, base: string): string {
+/**
+ * Next readable id for a base name: "box" -> "box_3" if box_1 and box_2 exist.
+ * `taken` holds ids already claimed but not yet in the world (same batch).
+ */
+export function nextNodeId(
+  world: World,
+  base: string,
+  taken: ReadonlySet<string> = new Set(),
+): string {
   const slug =
     base
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
+      .replace(/_\d+$/, "")
       .replace(/^(?=[0-9])/, "n_") || "node";
   let n = 1;
-  while (world.nodes[`${slug}_${n}`]) n++;
+  while (world.nodes[`${slug}_${n}`] || taken.has(`${slug}_${n}`)) n++;
   return `${slug}_${n}`;
 }
 

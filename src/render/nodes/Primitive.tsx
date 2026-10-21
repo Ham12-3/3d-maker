@@ -1,6 +1,9 @@
 "use client";
 
+import { useRef } from "react";
+import type { Group } from "three";
 import type { PrimitiveShape, SceneNode } from "@/scene/schema";
+import { useAnimatedTransform } from "./useAnimatedTransform";
 
 /**
  * Unit-sized primitive with its pivot at the bottom-centre, so the node's
@@ -15,12 +18,14 @@ export function Primitive({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { position, rotation, scale } = node.transform;
+  const group = useRef<Group>(null);
+  useAnimatedTransform(group, node);
   const m = node.material ?? {};
   const opacity = m.opacity ?? 1;
 
+  // Transform is driven by useAnimatedTransform; start invisible until the first frame.
   return (
-    <group position={position} rotation={rotation} scale={scale}>
+    <group ref={group} scale={0.001}>
       <mesh
         {...SHAPE_OFFSETS[node.primitive ?? "box"]}
         castShadow

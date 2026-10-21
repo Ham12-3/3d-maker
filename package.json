@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.137.0",
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.2",
     "immer": "11.2.7",

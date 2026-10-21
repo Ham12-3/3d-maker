@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
+import { CameraRig } from "./camera/CameraRig";
 import { World } from "./World";
 
 /** The full-screen 3D canvas. Client only (loaded with ssr: false). */
@@ -21,6 +22,7 @@ export default function Stage() {
       onPointerMissed={() => useInteraction.getState().select(null)}
     >
       <World />
+      <CameraRig />
       <OrbitControls
         makeDefault
         target={target}

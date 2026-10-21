@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { sceneStore } from "@/scene/store";
+import { CommandBar } from "./CommandBar";
 import { DevPanel } from "./DevPanel";
 import { Toolbar } from "./Toolbar";
 import { useShortcuts } from "./useShortcuts";
@@ -26,6 +27,7 @@ export function App() {
     <main className="relative h-dvh w-full">
       <Stage />
       <Toolbar />
+      <CommandBar />
       {process.env.NODE_ENV === "development" && <DevPanel />}
     </main>
   );
