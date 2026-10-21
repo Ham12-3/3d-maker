@@ -37,6 +37,9 @@ describe("tool definitions", () => {
       "remove_objects",
       "create_region",
       "search_assets",
+      "save_macro",
+      "apply_macro",
+      "capture_view",
       "set_camera",
       "say",
     ]);

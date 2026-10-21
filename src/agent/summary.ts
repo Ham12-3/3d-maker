@@ -1,4 +1,5 @@
 import { nodeSize } from "@/layout/solver";
+import { listMacros } from "./macros";
 import type { CameraState, SceneNode, Vec3, World } from "@/scene/schema";
 
 /**
@@ -30,6 +31,9 @@ export function buildSceneSummary(world: World, ctx: SummaryContext): string {
       ? `REGIONS: ${regions.map((r) => `${r.id} ${r.shape} c${fmt(r.center)} size ${r.size[0]}x${r.size[2]}m`).join("; ")}`
       : "REGIONS: none",
   );
+
+  const macros = listMacros(world);
+  lines.push(`MACROS: ${macros.map((m) => (m.builtIn ? m.id : `${m.id} (saved)`)).join(", ")}`);
 
   const nodes = Object.values(world.nodes);
   lines.push(`NODES (${nodes.length}):`);
@@ -74,6 +78,10 @@ function featureLine(n: SceneNode): string {
       return `${n.id} lake r${p.radius}m water@${at}`;
     case "path":
       return `${n.id} path ${String(p.from)} -> ${String(p.to)}, ${p.width}m wide`;
+    case "river":
+      return p.from
+        ? `${n.id} river ${String(p.from)} -> ${String(p.to)}, ${p.width}m wide`
+        : `${n.id} river across the view through ${at}, ${p.width}m wide`;
     default: {
       const area = p.innerRadius
         ? `ring ${Number(p.innerRadius).toFixed(0)}-${Number(p.radius).toFixed(0)}m`

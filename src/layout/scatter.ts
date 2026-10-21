@@ -1,7 +1,7 @@
 import { getKitModel } from "@/assets/catalog";
 import { createRng } from "@/lib/random";
 import type { SceneNode, Vec3, World } from "@/scene/schema";
-import { WORLD_HALF_EXTENT, getWorldHeightField, lakesOf } from "@/scene/terrain";
+import { WORLD_HALF_EXTENT, getWorldHeightField, nearestWater, waterBodies } from "@/scene/terrain";
 import { distanceToPolyline, pathPolyline, pathWidth } from "./paths";
 import type { Point2 } from "./regions";
 
@@ -168,8 +168,11 @@ export function scatterKey(world: World): string {
     if (n.kind === "primitive" || n.kind === "asset" || n.procedural?.type === "lake") {
       const [x, , z] = n.transform.position;
       parts.push(`${n.id}@${x.toFixed(1)},${z.toFixed(1)},${n.transform.scale[0].toFixed(1)}`);
-    } else if (n.procedural?.type === "path") {
-      parts.push(`${n.id}:${String(n.procedural.params.from)}>${String(n.procedural.params.to)}`);
+    } else if (n.procedural?.type === "path" || n.procedural?.type === "river") {
+      const [x, , z] = n.transform.position;
+      parts.push(
+        `${n.id}:${String(n.procedural.params.from)}>${String(n.procedural.params.to)}@${x.toFixed(1)},${z.toFixed(1)},${n.transform.rotation[1].toFixed(2)},${String(n.procedural.params.width)}`,
+      );
     }
   }
   return parts.join("|");
@@ -183,7 +186,7 @@ export function instanceSize(variantId: string, scale: number): Vec3 {
 
 /** Is p blocked for this feature: in a lake, on a path, or under a real object? */
 function obstaclesFor(world: World, self: SceneNode): (p: Point2) => boolean {
-  const lakes = lakesOf(world);
+  const water = waterBodies(world);
   const paths = Object.values(world.nodes)
     .filter((n) => n.procedural?.type === "path")
     .map((n) => ({ points: pathPolyline(world, n), clear: pathWidth(n) / 2 + 0.6 }));
@@ -197,8 +200,8 @@ function obstaclesFor(world: World, self: SceneNode): (p: Point2) => boolean {
   const isGrassy = self.procedural?.type === "grass" || self.procedural?.type === "flowers";
 
   return (p) => {
-    for (const l of lakes)
-      if (Math.hypot(p.x - l.x, p.z - l.z) < l.radius * (isGrassy ? 1.05 : 1.15)) return true;
+    const hit = nearestWater(water, p.x, p.z);
+    if (hit && hit.distance < (isGrassy ? 0.4 : 1.6)) return true;
     for (const path of paths) if (distanceToPolyline(path.points, p) < path.clear) return true;
     for (const s of solids) if (Math.hypot(p.x - s.x, p.z - s.z) < s.r) return true;
     return false;

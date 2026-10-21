@@ -1,20 +1,24 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { isScatterType } from "@/layout/scatter";
 import { useInteraction } from "@/scene/interaction";
 import type { SceneNode } from "@/scene/schema";
 import { useScene } from "@/scene/store";
-import { lakesOf, type Lake as LakeShape } from "@/scene/terrain";
+import { waterKey } from "@/scene/terrain";
 import { Ghosts } from "./Ghosts";
 import { AssetModel } from "./nodes/AssetModel";
 import { Fireflies } from "./nodes/Fireflies";
 import { Lake } from "./nodes/Lake";
 import { PathRibbon } from "./nodes/PathRibbon";
 import { Primitive } from "./nodes/Primitive";
+import { River } from "./nodes/River";
 import { Scatter } from "./nodes/Scatter";
 import { PointerMarker } from "./PointerMarker";
+import { RegionFlash } from "./RegionFlash";
+import { Sea } from "./Sea";
+import { Weather } from "./Weather";
 import { SkySystem } from "./SkySystem";
 import { Terrain } from "./Terrain";
 
@@ -22,16 +26,18 @@ import { Terrain } from "./Terrain";
 export function World() {
   const env = useScene((s) => s.world.environment);
   const nodeIds = useScene(useShallow((s) => Object.keys(s.world.nodes)));
-  // A string key keeps the terrain from rebuilding unless a lake actually changed.
-  const lakesKey = useScene((s) => JSON.stringify(lakesOf(s.world)));
-  const lakes = useMemo(() => JSON.parse(lakesKey) as LakeShape[], [lakesKey]);
+  // A string key keeps the terrain from rebuilding unless water actually changed.
+  const water = useScene((s) => waterKey(s.world));
 
   return (
     <>
       <SkySystem env={env} />
-      <Terrain terrain={env.terrain} lakes={lakes} />
+      <Terrain terrain={env.terrain} waterKey={water} />
+      <Sea terrain={env.terrain} />
+      <Weather weather={env.weather} />
       <PointerMarker />
       <Ghosts />
+      <RegionFlash />
       {nodeIds.map((id) => (
         <NodeView key={id} id={id} />
       ))}
@@ -72,12 +78,14 @@ function Procedural({ node, onSelect }: { node: SceneNode; onSelect: () => void 
   switch (type) {
     case "lake":
       return <Lake node={node} onSelect={onSelect} />;
+    case "river":
+      return <River node={node} onSelect={onSelect} />;
     case "path":
       return <PathRibbon node={node} />;
     case "fireflies":
       return <Fireflies node={node} />;
     default:
-      // river, rain and snow arrive later (weather is in the environment).
+      // Rain and snow are environment weather, not nodes.
       return null;
   }
 }

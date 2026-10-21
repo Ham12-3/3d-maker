@@ -15,7 +15,7 @@ export function Credits() {
   const credits = useMemo(() => JSON.parse(creditsKey) as Credit[], [creditsKey]);
 
   return (
-    <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+    <div className="flex flex-col items-end gap-2">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

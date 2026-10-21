@@ -1,0 +1,9 @@
+{
+  "name": "make it a winter wonderland (built-in macro)",
+  "world": "default",
+  "command": "make it a winter wonderland",
+  "assert": [
+    { "check": "env", "path": "weather", "equals": "snow" },
+    { "check": "count", "tag": "snowy", "min": 1 }
+  ]
+}

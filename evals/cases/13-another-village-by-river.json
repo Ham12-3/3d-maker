@@ -1,0 +1,16 @@
+{
+  "name": "save a village, make another by the river",
+  "world": "lake",
+  "setup": [
+    "build a small village square by the lake with a stone well, two cottages around it and a bench",
+    "save this as cosy village",
+    "add a river flowing across the view"
+  ],
+  "command": "make another cosy village by the river",
+  "assert": [
+    { "check": "count", "tag": "well", "min": 1, "newOnly": true },
+    { "check": "count", "tag": "cottage", "min": 2, "newOnly": true },
+    { "check": "nearWater", "tag": "well", "max": 14, "newOnly": true },
+    { "check": "dry" }
+  ]
+}

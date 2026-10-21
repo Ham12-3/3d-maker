@@ -63,7 +63,7 @@ type Spec = z.infer<typeof ObjectSpec>;
 const DEFAULT_MODEL_SIZE: Vec3 = [2, 2, 2];
 const AQUATIC = new Set(["boat", "canoe", "kayak", "raft", "lily", "water", "duck"]);
 
-type Resolved =
+export type Resolved =
   | { kind: "asset"; candidate: AssetCandidate; note?: string }
   | { kind: "primitive"; shape: PrimitiveShape; note?: string };
 
@@ -223,13 +223,17 @@ function kitCandidate(assetId: string): AssetCandidate | undefined {
 
 /**
  * The node's size box. Bundled models have known proportions, so they keep
- * them and match the requested height; online models fit the requested box.
+ * them and are scaled uniformly to fit inside the requested box (scaling by
+ * height alone blew flat things like campfires up sideways); online models
+ * fit the requested box.
  */
-function sizeFor(spec: Spec, res: Resolved): Vec3 {
+export function sizeFor(spec: Pick<Spec, "size">, res: Resolved): Vec3 {
   if (res.kind === "primitive") return (spec.size ?? [1, 1, 1]) as Vec3;
   const known = res.candidate.size;
   if (known) {
-    const k = spec.size ? spec.size[1] / known[1] : 1;
+    const k = spec.size
+      ? Math.min(spec.size[0] / known[0], spec.size[1] / known[1], spec.size[2] / known[2])
+      : 1;
     return [known[0] * k, known[1] * k, known[2] * k].map((v) => Math.round(v * 100) / 100) as Vec3;
   }
   return (spec.size ?? DEFAULT_MODEL_SIZE) as Vec3;

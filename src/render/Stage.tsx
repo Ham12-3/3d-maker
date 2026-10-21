@@ -7,6 +7,7 @@ import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
 import { CameraRig } from "./camera/CameraRig";
+import { CaptureBridge } from "./capture";
 import { PerfProbe } from "./PerfProbe";
 import { World } from "./World";
 
@@ -37,6 +38,7 @@ export default function Stage() {
       <World />
       <CameraRig />
       <PerfProbe />
+      <CaptureBridge />
       <OrbitControls
         makeDefault
         target={target}

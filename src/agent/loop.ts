@@ -10,7 +10,7 @@ import { StreamPreview } from "./preview";
 import { focusFor } from "./tools/common";
 import { buildSceneSummary, type SummaryContext } from "./summary";
 import { executeToolCall, getTool, type ToolCallResult } from "./tools";
-import type { ToolContext } from "./tools/types";
+import type { RecordedStep, ToolContext, ToolImage } from "./tools/types";
 
 /**
  * Client-side agent loop. One command = one agent turn = one undo step.
@@ -40,6 +40,14 @@ export type AgentDeps = {
   searchAllAssets: AssetSearch;
   /** Asset URLs the renderer failed to load (for the judge). */
   brokenAssets?: () => Record<string, string>;
+  /** What the previous command built, so "save this as X" works. */
+  previousTurn?: { command: string; steps: RecordedStep[] } | null;
+  /** Screenshot of the current view (browser only). */
+  captureView?: () => Promise<ToolImage | null>;
+  /** Images sent with the command itself (the Polish pass sends the current view). */
+  images?: ToolImage[];
+  /** Undo-history label (defaults to the command). */
+  label?: string;
   onActivity?: (text: string) => void;
   onToolResult?: (name: string, result: ToolCallResult) => void;
   signal?: AbortSignal;
@@ -62,6 +70,8 @@ export type TurnResult = {
   /** Model that finished the turn, and why it was escalated (if it was). */
   model?: string;
   escalated?: string;
+  /** Building steps this turn made (for save_macro on the next command). */
+  recorded?: RecordedStep[];
 };
 
 export async function runAgentTurn(command: string, deps: AgentDeps): Promise<TurnResult> {
@@ -91,6 +101,9 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
     searchAssets: deps.searchAssets,
     searchAllAssets: deps.searchAllAssets,
     candidates: new Map(),
+    recorder: [],
+    previousTurn: deps.previousTurn ?? null,
+    captureView: deps.captureView,
   };
 
   const markVisible = () => {
@@ -128,15 +141,19 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
         bigBuild = true;
     }
     deps.onToolResult?.(block.name, result);
-    return toolResult(block.id, result.isError, result.content);
+    return toolResult(block.id, result.isError, result.content, result.images);
   };
 
   const summary = buildSceneSummary(store.getState().world, deps.context);
-  const firstMessage: MessageParam = { role: "user", content: `${summary}\n\nCOMMAND: ${command}` };
+  const text = `${summary}\n\nCOMMAND: ${command}`;
+  const firstMessage: MessageParam = {
+    role: "user",
+    content: deps.images?.length ? [{ type: "text", text }, ...deps.images.map(imageBlock)] : text,
+  };
   let messages: MessageParam[] = [firstMessage];
   let judgeSent = false;
   let judge: TurnResult["judge"];
-  const label = command.length > 48 ? `${command.slice(0, 45)}...` : command;
+  const label = deps.label ?? (command.length > 48 ? `${command.slice(0, 45)}...` : command);
 
   store.getState().beginTransaction(label);
   try {
@@ -191,6 +208,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
         store.getState().beginTransaction(label);
         preview.clearAll();
         ctx.candidates.clear();
+        ctx.recorder!.length = 0;
         profile = ROUTING.main;
         messages = [firstMessage];
         iterations = 0;
@@ -256,6 +274,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       judge,
       model: PROFILES[profile].model,
       ...(escalated ? { escalated } : {}),
+      recorded: ctx.recorder,
     };
   } catch (err) {
     preview.clearAll();
@@ -306,8 +325,27 @@ function mergeJudge(
   };
 }
 
-function toolResult(id: string, isError: boolean, content: string): ToolResultParam {
-  return { type: "tool_result", tool_use_id: id, content, ...(isError ? { is_error: true } : {}) };
+function toolResult(
+  id: string,
+  isError: boolean,
+  content: string,
+  images?: ToolImage[],
+): ToolResultParam {
+  return {
+    type: "tool_result",
+    tool_use_id: id,
+    content: images?.length
+      ? [{ type: "text", text: content }, ...images.map(imageBlock)]
+      : content,
+    ...(isError ? { is_error: true } : {}),
+  };
+}
+
+function imageBlock(image: ToolImage): Anthropic.Beta.BetaImageBlockParam {
+  return {
+    type: "image",
+    source: { type: "base64", media_type: image.mediaType, data: image.data },
+  };
 }
 
 /** Browser transport: POST to the proxy, turn JSON errors into readable messages. */

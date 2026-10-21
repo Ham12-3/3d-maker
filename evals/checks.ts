@@ -2,7 +2,7 @@ import { judgeWorld } from "@/agent/judge";
 import { distanceToPolyline, pathPolyline, pathWidth } from "@/layout/paths";
 import { nodeSize } from "@/layout/solver";
 import type { SceneNode, World } from "@/scene/schema";
-import { lakesOf } from "@/scene/terrain";
+import { nearestWater, waterBodies } from "@/scene/terrain";
 
 /**
  * Declarative assertions for eval cases. Each returns pass/fail plus a short
@@ -19,6 +19,8 @@ export type Check =
   | { check: "near"; tag: string; target: string; max: number; min?: number; newOnly?: boolean }
   | { check: "alongPath"; tag: string; path: string; maxGap: number }
   | { check: "dry" }
+  | { check: "nearWater"; tag: string; max: number; newOnly?: boolean }
+  | { check: "region"; id: string }
   | { check: "judgeClean" };
 
 export type CheckResult = { pass: boolean; detail: string };
@@ -130,19 +132,42 @@ export function runCheck(check: Check, before: World, after: World): CheckResult
       return { pass: ok, detail: `gaps ${gaps.map((g) => g.toFixed(2)).join(",")}` };
     }
     case "dry": {
+      const water = waterBodies(after);
       const wet = nodes.filter(
         (n) =>
           (n.kind === "primitive" || n.kind === "asset") &&
           !["boat", "canoe", "lily", "duck"].some((t) => n.tags.includes(t)) &&
-          lakesOf(after).some(
-            (l) =>
-              Math.hypot(n.transform.position[0] - l.x, n.transform.position[2] - l.z) <
-              l.radius - 0.2,
-          ),
+          (nearestWater(water, n.transform.position[0], n.transform.position[2])?.distance ?? 1) <
+            -0.2,
       );
       return {
         pass: wet.length === 0,
         detail: wet.length ? `in water: ${wet.map((n) => n.id).join(",")}` : "dry",
+      };
+    }
+    case "nearWater": {
+      const water = waterBodies(after);
+      const hits = nodes.filter(
+        (x) => matches(x, check.tag) && (!check.newOnly || isNew(x)) && !x.procedural,
+      );
+      const gaps = hits.map(
+        (x) =>
+          nearestWater(water, x.transform.position[0], x.transform.position[2])?.distance ??
+          Infinity,
+      );
+      const ok = hits.length > 0 && gaps.every((g) => g > -0.2 && g <= check.max);
+      return {
+        pass: ok,
+        detail: `gaps to water ${gaps.map((g) => g.toFixed(1)).join(",") || "none"}`,
+      };
+    }
+    case "region": {
+      const region = after.regions[check.id];
+      return {
+        pass: Boolean(region),
+        detail: region
+          ? `${region.shape} at ${region.center.map((v) => v.toFixed(1)).join(",")}`
+          : `regions: ${Object.keys(after.regions).join(",") || "none"}`,
       };
     }
     case "judgeClean": {

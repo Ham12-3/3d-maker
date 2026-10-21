@@ -1,0 +1,7 @@
+{
+  "name": "call this area the village square (region by voice)",
+  "world": "default",
+  "pointer": [10, 0, -8],
+  "command": "call this area the village square",
+  "assert": [{ "check": "region", "id": "village_square" }]
+}

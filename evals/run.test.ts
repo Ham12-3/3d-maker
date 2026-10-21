@@ -6,6 +6,7 @@ import { isProfileName, type ProfileName } from "@/agent/config";
 import { runAgentTurn } from "@/agent/loop";
 import { agentRequest } from "@/agent/request";
 import { mockSearchAllAssets, mockSearchAssets } from "@/agent/test-helpers";
+import type { RecordedStep } from "@/agent/tools/types";
 import type { Vec3 } from "@/scene/schema";
 import { createSceneStore } from "@/scene/store";
 import { runCheck, type Check } from "./checks";
@@ -25,6 +26,8 @@ type Case = {
   command: string;
   selection?: string;
   pointer?: Vec3;
+  /** Commands run first (not measured), e.g. build something and save it. */
+  setup?: string[];
   assert: Check[];
 };
 
@@ -96,6 +99,25 @@ describe.skipIf(!enabled)("evals", () => {
   for (const c of cases) {
     it(c.name, { timeout: 180_000 }, async () => {
       const store = createSceneStore(baseWorld(c.world));
+      let previousTurn: { command: string; steps: RecordedStep[] } | null = null;
+      for (const command of c.setup ?? []) {
+        const setup = await runAgentTurn(command, {
+          routing: PROFILE,
+          request: async (messages, { signal, profile }) =>
+            client!.beta.messages
+              .stream(agentRequest(messages, profile), { signal })
+              .toReadableStream() as ReadableStream<Uint8Array>,
+          store,
+          context: { selection: null, pointer: null, camera: store.getState().world.camera },
+          moveCamera: () => {},
+          say: () => {},
+          searchAssets: mockSearchAssets,
+          searchAllAssets: mockSearchAllAssets,
+          previousTurn,
+          seed: 7,
+        });
+        if (setup.recorded?.length) previousTurn = { command, steps: setup.recorded };
+      }
       const before = store.getState().world;
       const usage: { model: string; u: Anthropic.Beta.BetaUsage }[] = [];
       const models = new Set<string>();
@@ -121,6 +143,7 @@ describe.skipIf(!enabled)("evals", () => {
         say: () => {},
         searchAssets: mockSearchAssets,
         searchAllAssets: mockSearchAllAssets,
+        previousTurn,
         onToolResult: (_, r) => {
           if (!r.isError) valid++;
         },

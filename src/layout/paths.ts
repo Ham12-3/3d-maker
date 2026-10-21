@@ -3,30 +3,43 @@ import type { SceneNode, World } from "@/scene/schema";
 import type { Point2 } from "./regions";
 
 /**
- * Paths are procedural nodes whose params name two endpoints (`from`, `to`:
- * node ids, region ids or "x,z"). The polyline is derived from the world, so
- * a path follows its endpoints when they move.
+ * Paths and rivers are procedural nodes whose params name two endpoints
+ * (`from`, `to`: node ids, region ids or "x,z"). The polyline is derived from
+ * the world, so it follows its endpoints when they move. Without endpoints it
+ * is a straight line of `length` through the node, along its rotation.
  */
 
 export const DEFAULT_PATH_WIDTH = 1.6;
+export const DEFAULT_RIVER_WIDTH = 6;
+
+export function isLinear(node: SceneNode): boolean {
+  return node.procedural?.type === "path" || node.procedural?.type === "river";
+}
 
 export function pathWidth(node: SceneNode): number {
-  return Number(node.procedural?.params.width ?? DEFAULT_PATH_WIDTH);
+  const fallback = node.procedural?.type === "river" ? DEFAULT_RIVER_WIDTH : DEFAULT_PATH_WIDTH;
+  return Number(node.procedural?.params.width ?? fallback);
 }
 
 export function pathPolyline(world: World, node: SceneNode): Point2[] {
   const params = node.procedural?.params ?? {};
   const a = endpoint(world, params.from, node);
   const b = endpoint(world, params.to, node);
+  const river = node.procedural?.type === "river";
+  // Rivers run into lakes; paths stop at the edge of what they connect.
   const [from, to] =
-    a && b ? trimEnds(world, String(params.from), String(params.to), a, b) : fallbackLine(node);
+    a && b
+      ? river
+        ? [a, b]
+        : trimEnds(world, String(params.from), String(params.to), a, b)
+      : fallbackLine(node);
 
   const length = Math.hypot(to.x - from.x, to.z - from.z);
   const steps = Math.max(2, Math.ceil(length / 1));
   const noise = createNoise2D(node.procedural?.seed ?? 1);
   const nx = -(to.z - from.z) / (length || 1);
   const nz = (to.x - from.x) / (length || 1);
-  const wander = Math.min(3, length * 0.12);
+  const wander = river ? Math.min(9, length * 0.08) : Math.min(3, length * 0.12);
 
   const points: Point2[] = [];
   for (let i = 0; i <= steps; i++) {
@@ -52,6 +65,26 @@ export function distanceToPolyline(points: Point2[], p: Point2): number {
     const len2 = dx * dx + dz * dz || 1;
     const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2));
     best = Math.min(best, Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t)));
+  }
+  return best;
+}
+
+/** Closest point on the polyline: distance, and position as segment index + fraction. */
+export function nearestOnPolyline(
+  points: Point2[],
+  p: Point2,
+): { distance: number; point: Point2; index: number; t: number } {
+  let best = { distance: Infinity, point: points[0] ?? p, index: 0, t: 0 };
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2));
+    const q = { x: a.x + dx * t, z: a.z + dz * t };
+    const d = Math.hypot(p.x - q.x, p.z - q.z);
+    if (d < best.distance) best = { distance: d, point: q, index: i - 1, t };
   }
   return best;
 }
@@ -117,7 +150,8 @@ function trimEnds(
 }
 
 function fallbackLine(node: SceneNode): [Point2, Point2] {
-  const half = Number(node.procedural?.params.length ?? 20) / 2;
+  const fallback = node.procedural?.type === "river" ? 140 : 20;
+  const half = Number(node.procedural?.params.length ?? fallback) / 2;
   const angle = node.transform.rotation[1];
   const [x, , z] = node.transform.position;
   const dx = Math.sin(angle) * half;

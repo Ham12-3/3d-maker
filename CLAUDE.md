@@ -28,13 +28,13 @@ src/
     api/assets/search/    Poly Pizza search proxy (cached a day)
     api/assets/file/[id]/ Poly Pizza GLB proxy (key stays on the server)
     api/stt/token/        OpenAI speech: GET availability, POST mints a 10-minute client secret
-  agent/          config, system prompt, request builder, summary, client loop, judge, status, tools/
+  agent/          config, system prompt, request builder, summary, client loop, judge, status, macros, tools/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
   layout/         Solver, predicates, regions, spatial hash, scatter (instanced nature), paths
-  scene/          World schema, default world, store, ops, terrain (height field + lake carving)
-  render/         R3F: Stage, World, Terrain, SkySystem, nodes/ (Primitive, AssetModel, Scatter, Lake, PathRibbon, Fireflies), camera/
-  ui/             CommandBar, Toolbar, Credits, DevPanel, DevOverlay, shortcuts
+  scene/          World schema, default world, store, ops, terrain (height field + lake/river carving, water queries)
+  render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, nodes/ (Primitive, AssetModel, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/
+  ui/             CommandBar, Toolbar, TopBar (Polish + Credits), Credits, DevPanel, DevOverlay, shortcuts
   voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
   lib/            seeded RNG, simplex noise, rate limiter, TTL cache
 evals/            cases/*.json, checks, base worlds, run.test.ts, results/
@@ -42,7 +42,7 @@ public/assets/kenney/   curated CC0 GLBs + manifest.json (sizes in metres)
 scripts/          curate-kenney.mjs
 ```
 
-Planned (not built yet): local Whisper engine (optional), visual critique, macros, persistence.
+Planned (not built yet): local Whisper engine (optional), persistence.
 
 ## Architecture rules
 
@@ -53,7 +53,7 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - **Transient UI state** (selection, pointer hit) lives in `scene/interaction.ts`, outside the world and outside undo. The pointer is cleared after each successful command (a ground click is a one-shot "there").
 - **Per-node subscriptions.** `World.tsx` subscribes to node ids; each `NodeView` subscribes to its own node, so Immer structural sharing keeps re-renders local.
 - **Animation runs in useFrame, not React state.** `SkySystem` eases every environment value (~1.5 s), `useAnimatedTransform` pops nodes in and eases moves, `Scatter` grows instances in from the centre. Mutate per-frame things through refs (the React Compiler lint rules reject mutating hook-returned objects).
-- **Derived, not stored:** forest/rock/grass instance positions, path polylines and lake-carved terrain are pure functions of the world (`layout/scatter.ts`, `layout/paths.ts`, `scene/terrain.ts#getWorldHeightField`). Renderer, solver, judge and tests all call the same functions.
+- **Derived, not stored:** forest/rock/grass instance positions, path and river polylines and water-carved terrain are pure functions of the world (`layout/scatter.ts`, `layout/paths.ts`, `scene/terrain.ts#getWorldHeightField`). Renderer, solver, judge and tests all call the same functions.
 
 ## Agent
 
@@ -66,15 +66,21 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - **Auto-framing:** if a turn adds a lake or forest and Claude didn't call `set_camera`, the client plays an establishing shot of the whole scene, never further back than the fog lets you see (`fogVisibility`).
 - Each command is a fresh conversation: user message = scene summary + `COMMAND: ...`. History is append-only within a turn.
 - Tool executors are pure functions over a `ToolContext` (no React/globals; asset search injected), so tests and evals run them headless. Inputs are always zod-validated; failures go back as `is_error` tool results.
-- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `set_camera`, `say`, and `escalate` (fast model only).
+- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, river, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `save_macro`, `apply_macro`, `capture_view`, `set_camera`, `say`, and `escalate` (fast model only).
 - **Model routing** (`agent/config.ts`): profiles `sonnet`, `sonnet-nothink`, `haiku`, `haiku-nothink`; the app runs `ROUTING` = Haiku 5.5 first. Haiku may call `escalate` (first and alone) for multi-part compositions or whole-scene restyles; the loop rolls back anything already done and reruns the command from the original message on Sonnet 5.5. The client sends the profile name to `/api/agent`, which only accepts known names. `TurnResult.model` / `escalated` record who handled it.
 - **Streaming previews** (`agent/preview.ts`): all creating tools and `set_environment` use `eager_input_streaming`. On each `inputJson` snapshot only the finished part is used (every key/element but the last): finished `set_environment` fields are applied inside the turn's transaction (the sky starts turning early), and `add_objects` / `add_procedural` show ghost boxes / discs / rings (`render/Ghosts.tsx`) at solved positions until the tool runs. `TurnResult.firstVisibleMs` = first preview or real change.
+
+## Polish, macros, regions
+
+- **Visual critique:** `render/capture.tsx#CaptureBridge` registers `captureView()` (renders the current frame, downscales to 1024 px wide, JPEG 0.82). `capture_view` returns it to Claude as an image tool result. The **Polish** button (`agent/run-command.ts#runPolish`) captures the view and runs a Sonnet turn with `polishPrompt(lastRequest)` plus the image; Polish is its own undo step. **Auto** (TopBar checkbox, `status.autoPolish`) polishes after any turn with 3+ tool calls.
+- **Macros** (`agent/macros.ts`): `executeToolCall` records every successful creating call (`set_environment`, `add_procedural`, `add_objects`, `create_region`) with the ids it created into `ctx.recorder`. `save_macro` generalises the current turn's steps, or the previous turn's (`previousTurn` in `run-command.ts`): created ids become `$placeholders`, absolute positions are dropped, and references to things outside the recipe become `$anchor`. `apply_macro` assigns fresh ids, binds `$anchor` to a target (node, region, "pointer"), and replays the steps through `executeToolCall`, so the solver re-places everything. Saved macros live in `world.macros` (undoable, in the summary as `MACROS:`). Built-ins: spooky, cosy_village, tropical_island, winter_wonderland, alien_planet.
+- **Regions by voice:** "call this area X" → `create_region` at the pointer. `RegionFlash` outlines a new region and shows its name for 4 s.
 
 ## Assets
 
 - **Tiers:** bundled Kenney kit first (`assets/catalog.ts#searchKit`, instant, offline, CC0), then Poly Pizza via `/api/assets/search`. A kit model must match the query's head noun ("wooden cabin" never resolves to a fence). No match falls back to a primitive and the tool result says so.
 - **Poly Pizza API v1.1:** `https://api.poly.pizza/v1.1/search/{kw}?Limit&License=1` (1 = CC0, 0 = CC-BY), header `x-auth-token`. The token is also required for files on `static.poly.pizza`, so GLBs are served by `/api/assets/file/[id]`, which only ever fetches `https://static.poly.pizza/*.glb`. Animated and >60k-tri models are filtered out. CC-BY attribution is stored on the node and listed in Credits.
-- **Size semantics:** an asset node's `transform.scale` is its size box in metres (same as primitives). `AssetModel` normalises the GLB to bottom-centre and scales it uniformly to fit the box. Kit models keep their manifest proportions scaled to the requested height; online models fit the requested box.
+- **Size semantics:** an asset node's `transform.scale` is its size box in metres (same as primitives). `AssetModel` normalises the GLB to bottom-centre and scales it uniformly to fit the box. Kit models keep their manifest proportions, scaled uniformly to fit inside the requested box (height alone blew flat models like campfires up sideways); online models fit the requested box.
 - Instanced nature uses kit models: one `InstancedMesh` per (variant, mesh part). Forest species: pine, mixed, deciduous, autumn, palm, dead, snowy.
 
 ## Voice
@@ -101,7 +107,9 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - `transform.position` is **absolute world space** at the node's **bottom-centre**. A node standing on the ground has `y = heightAt(x, z)` where `heightAt = getWorldHeightField(world)` (lakes carved in). Use `getHeightField` only for the uncarved base.
 - Primitives are unit-sized with a bottom-centre pivot, so `scale` is the size in metres.
 - Every terrain type is flat at y = 0 within `FLAT_RADIUS` (16 m) of the origin.
-- Lakes: procedural nodes, `params.radius`; the bowl reaches back to natural terrain at `SHORE_FACTOR` (1.35) x radius; water sits 0.35 m below the uncarved centre height. Adding a lake pushes existing objects out of the water.
+- Lakes: procedural nodes, `params.radius`; the bowl reaches back to natural terrain at `SHORE_FACTOR` (1.35) x radius; water sits 0.35 m below the uncarved centre height. Adding a lake or river pushes existing objects out of the water.
+- Rivers: procedural nodes with `params.width` (default 6) and either `from`/`to` (node, region or `x,z`) or a centre + `rotationY` + `length` (default 140, across the view). The channel follows the base terrain, water 0.35 m below it point by point. `scene/terrain.ts#nearestWater` (signed distance, level, way out) is the one water query for solver, scatter, judge and evals; `waterKey` changes exactly when water changes.
+- Weather: `environment.weather` rain/snow is a camera-following point box animated in the vertex shader (one draw call). Island terrain gets a sea plane at `SEA_LEVEL` (-0.4).
 - Sun: `render/sun.ts`. Rises east (+x) at 5:30, overhead at 12:00, sets west (-x) at 18:30, tilted towards +z (the default camera side). A dim blue moon light fades in at night.
 
 ## Evals
@@ -117,6 +125,7 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 
   Earlier single-profile runs (10 simple cases): Haiku 1.23 s to first change vs Sonnet 1.85 s; Sonnet with `between_tools` was slower (2.34 s), so it is not used.
 
+- Phase 5 run (15 cases, adds "save this village, make another by the river", winter wonderland, naming a region; cases may have `setup` commands that run first, chained via `previousTurn`): 15/15, valid tool calls 97%, first visible p50 1.2 s, total p50 2.1 s, 2 escalations, $0.045.
 - `pnpm test` skips evals; vitest `--mode evals` (or `EVALS=1`) enables them.
 
 ## Decisions log
@@ -139,5 +148,6 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - pnpm reports "Ignored build scripts: unrs-resolver". It ships prebuilt binaries, so lint works without approving it.
 - `next/font/google` fetches Inter at build time; offline builds fall back to system fonts.
 - Rate limiters and asset caches are per server instance (fine for dev; revisit for Vercel in Phase 7).
-- Stars mount/unmount rather than fade. Rivers, rain and snow renderers are not built yet (schema allows them).
+- Stars mount/unmount rather than fade.
+- The island sea is only rendered; the solver and judge don't treat it as water (the island shore keeps most placements dry anyway).
 - Frame rate measured in a hidden/background browser pane is throttled and meaningless; check fps with the page visible.

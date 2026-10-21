@@ -3,7 +3,13 @@ import { judgeWorld } from "@/agent/judge";
 import { scatterFeature } from "@/layout/scatter";
 import { loadDefaultWorld } from "@/scene/defaults";
 import { createSceneStore } from "@/scene/store";
-import { getWorldHeightField, waterLevelAt } from "@/scene/terrain";
+import {
+  getWorldHeightField,
+  nearestWater,
+  riversOf,
+  waterBodies,
+  waterLevelAt,
+} from "@/scene/terrain";
 import { mockSearchAllAssets, mockSearchAssets } from "../test-helpers";
 import { executeToolCall } from "./index";
 import type { ToolContext } from "./types";
@@ -201,6 +207,85 @@ describe("nature tools", () => {
   });
 });
 
+describe("rivers", () => {
+  it("carve a channel across the view and push objects in its way onto the banks", async () => {
+    const { ctx, world } = setup();
+    const r = await executeToolCall(
+      "add_procedural",
+      {
+        type: "river",
+        id: "river_1",
+        relations: [{ predicate: "near", target: "origin", distance: 0.1 }],
+      },
+      ctx,
+    );
+    expect(r.isError).toBe(false);
+    const w = world();
+    const river = riversOf(w)[0]!;
+    expect(river.half).toBe(3);
+    // Water in the channel, carved ground below it.
+    const mid = river.points[Math.floor(river.points.length / 2)]!;
+    const level = waterLevelAt(w, mid.x, mid.z);
+    expect(level).not.toBeNull();
+    expect(getWorldHeightField(w)(mid.x, mid.z)).toBeLessThan(level! - 0.5);
+    // Every demo primitive near the origin is now dry and on the ground.
+    for (const n of Object.values(w.nodes).filter((x) => x.kind === "primitive")) {
+      expect(waterLevelAt(w, n.transform.position[0], n.transform.position[2])).toBeNull();
+      expect(n.transform.position[1]).toBeCloseTo(
+        getWorldHeightField(w)(n.transform.position[0], n.transform.position[2]),
+        2,
+      );
+    }
+  });
+
+  it("places things by the river on the bank, and forests avoid the water", async () => {
+    const { ctx, world } = setup();
+    await executeToolCall("remove_objects", { tag: "demo" }, ctx);
+    await executeToolCall(
+      "add_procedural",
+      { type: "river", id: "river_1", from: "-60,-20", to: "60,-10" },
+      ctx,
+    );
+    await executeToolCall(
+      "add_objects",
+      {
+        objects: [
+          {
+            name: "tent",
+            asset_query: "tent",
+            count: 3,
+            relations: [{ predicate: "near", target: "river_1", distance: 2 }],
+          },
+        ],
+      },
+      ctx,
+    );
+    await executeToolCall(
+      "add_procedural",
+      {
+        type: "forest",
+        radius: 30,
+        count: 60,
+        relations: [{ predicate: "near", target: "river_1" }],
+      },
+      ctx,
+    );
+    const w = world();
+    const water = waterBodies(w);
+    const tents = Object.values(w.nodes).filter((n) => n.tags.includes("tent"));
+    expect(tents).toHaveLength(3);
+    for (const t of tents) {
+      const hit = nearestWater(water, t.transform.position[0], t.transform.position[2])!;
+      expect(hit.distance).toBeGreaterThan(0.5);
+      expect(hit.distance).toBeLessThan(6);
+    }
+    const forest = Object.values(w.nodes).find((n) => n.procedural?.type === "forest")!;
+    for (const tree of scatterFeature(w, forest)) {
+      expect(nearestWater(water, tree.x, tree.z)!.distance).toBeGreaterThan(1.5);
+    }
+  });
+});
+
 describe("judge", () => {
   it("sets floating things down, lifts buried ones and reports broken models", () => {
     const world = loadDefaultWorld();
@@ -240,5 +325,27 @@ describe("judge", () => {
     expect(Math.abs(moved[0] - -3)).toBeGreaterThan(1.3);
     expect(report.fixes.has("cup_1")).toBe(false);
     expect(report.hard).toEqual([]);
+  });
+});
+
+describe("model sizing", () => {
+  it("fits kit models inside the requested box instead of scaling by height alone", async () => {
+    const { sizeFor } = await import("./add-objects");
+    const campfire = {
+      source: "kenney" as const,
+      id: "campfire",
+      name: "campfire",
+      url: "/x.glb",
+      license: "CC0" as const,
+      size: [1.2, 0.42, 1.18] as [number, number, number],
+      tags: [],
+      score: 1,
+    };
+    const size = sizeFor({ size: [1.5, 0.7, 1.5] }, { kind: "asset", candidate: campfire });
+    expect(size[0]).toBeLessThanOrEqual(1.5);
+    expect(size[2]).toBeLessThanOrEqual(1.5);
+    expect(size[1]).toBeLessThanOrEqual(0.7);
+    // Proportions kept.
+    expect(size[0] / size[1]).toBeCloseTo(1.2 / 0.42, 1);
   });
 });

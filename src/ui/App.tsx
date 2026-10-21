@@ -6,7 +6,7 @@ import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
 import { useVoice } from "@/voice/useVoice";
 import { CommandBar } from "./CommandBar";
-import { Credits } from "./Credits";
+import { TopBar } from "./TopBar";
 import { DevOverlay } from "./DevOverlay";
 import { DevPanel } from "./DevPanel";
 import { Toolbar } from "./Toolbar";
@@ -39,7 +39,7 @@ export function App() {
           <DevOverlay />
         </>
       )}
-      <Credits />
+      <TopBar />
     </main>
   );
 }

@@ -2,7 +2,13 @@ import { nodeSize } from "@/layout/solver";
 import { scatterFeature, isScatterType } from "@/layout/scatter";
 import { footprintAt, footprintsOverlap } from "@/layout/spatial-hash";
 import type { SceneNode, Vec3, World } from "@/scene/schema";
-import { WORLD_HALF_EXTENT, getWorldHeightField, lakesOf, waterLevelAt } from "@/scene/terrain";
+import {
+  WORLD_HALF_EXTENT,
+  getWorldHeightField,
+  nearestWater,
+  waterBodies,
+  waterLevelAt,
+} from "@/scene/terrain";
 
 /**
  * Deterministic judge, run after every agent turn (free, no model call).
@@ -40,7 +46,7 @@ export function judgeWorld(
 ): JudgeReport {
   const report: JudgeReport = { fixes: new Map(), fixed: [], hard: [] };
   const heightAt = getWorldHeightField(world);
-  const lakes = lakesOf(world);
+  const waterMap = waterBodies(world);
   const solids = Object.values(world.nodes).filter(isSolid);
   const pos = (n: SceneNode) => report.fixes.get(n.id) ?? n.transform.position;
   const fix = (n: SceneNode, p: Vec3, issue: JudgeIssue) => {
@@ -67,20 +73,18 @@ export function judgeWorld(
       });
     }
 
-    // Land objects standing in a lake: push out to the shore.
+    // Land objects standing in a lake or river: push out to the bank.
     if (!aquatic) {
-      for (const l of lakes) {
-        const d = Math.hypot(x - l.x, z - l.z);
-        if (d < l.radius - 0.2) {
-          const k = (l.radius + radius + 0.5) / Math.max(d, 0.01);
-          x = l.x + (x - l.x) * k;
-          z = l.z + (z - l.z) * k;
-          fix(n, [x, heightAt(x, z), z], {
-            nodeId: n.id,
-            kind: "in_water",
-            detail: `${n.id} was in the lake; moved to the shore`,
-          });
-        }
+      const hit = nearestWater(waterMap, x, z);
+      if (hit && hit.distance < -0.2) {
+        const push = -hit.distance + radius + 0.5;
+        x += hit.away.x * push;
+        z += hit.away.z * push;
+        fix(n, [x, heightAt(x, z), z], {
+          nodeId: n.id,
+          kind: "in_water",
+          detail: `${n.id} was in the water; moved to the bank`,
+        });
       }
     }
 

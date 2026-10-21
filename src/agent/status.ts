@@ -17,6 +17,10 @@ type AgentStatus = {
       })
     | null;
   abort: AbortController | null;
+  /** The user's last real request (not a Polish pass), for Polish to judge against. */
+  lastRequest: string | null;
+  /** Run a Polish pass automatically after bigger builds. */
+  autoPolish: boolean;
 };
 
 export const useAgentStatus = create<AgentStatus>()(() => ({
@@ -27,4 +31,6 @@ export const useAgentStatus = create<AgentStatus>()(() => ({
   error: null,
   lastTurn: null,
   abort: null,
+  lastRequest: null,
+  autoPolish: false,
 }));

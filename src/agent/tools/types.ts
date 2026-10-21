@@ -26,10 +26,32 @@ export type ToolContext = {
   searchAllAssets: AssetSearch;
   /** Candidates seen this turn, keyed "source:id", so add_objects can use asset_id. */
   candidates: Map<string, AssetCandidate>;
+  /** Successful building steps of this turn, for save_macro next time. */
+  recorder?: RecordedStep[];
+  /** What the previous command built (save_macro saves this). */
+  previousTurn?: { command: string; steps: RecordedStep[] } | null;
+  /** Renders the current view; null when there is no renderer (tests, evals). */
+  captureView?: () => Promise<ToolImage | null>;
+};
+
+export type RecordedStep = {
+  tool: string;
+  input: unknown;
+  /** Node and region ids the step created, in creation order. */
+  created: string[];
+  regions: string[];
+};
+
+export type ToolImage = {
+  mediaType: "image/jpeg" | "image/png";
+  data: string;
+  width: number;
+  height: number;
 };
 
 export type ToolOutcome =
-  { ok: true; result: string; activity: string } | { ok: false; error: string };
+  | { ok: true; result: string; activity: string; images?: ToolImage[] }
+  | { ok: false; error: string };
 
 export type AgentTool<S extends z.ZodType = z.ZodType> = {
   name: string;

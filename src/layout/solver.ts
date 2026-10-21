@@ -3,11 +3,12 @@ import type { CameraState, Relation, SceneNode, Vec3, World } from "@/scene/sche
 import {
   WORLD_HALF_EXTENT,
   getWorldHeightField,
-  lakesOf,
+  nearestWater,
+  waterBodies,
   waterLevelAt,
   type HeightField,
 } from "@/scene/terrain";
-import { distanceToPolyline, pathPolyline, pathWidth } from "./paths";
+import { distanceToPolyline, isLinear, pathPolyline, pathWidth } from "./paths";
 import {
   POSITIONAL,
   candidates,
@@ -68,7 +69,7 @@ export function solvePlacements(
   const axes = viewAxes(ctx.camera);
   const hash = new SpatialHash();
   const placed = new Map<string, { position: Vec3; size: Vec3; rotationY: number }>();
-  const lakes = lakesOf(world);
+  const waterMap = waterBodies(world);
   const paths = Object.values(world.nodes)
     .filter((n) => n.procedural?.type === "path")
     .map((n) => ({ points: pathPolyline(world, n), half: pathWidth(n) / 2 }));
@@ -141,12 +142,10 @@ export function solvePlacements(
         const outside =
           Math.abs(p.x) > WORLD_HALF_EXTENT - WORLD_MARGIN ||
           Math.abs(p.z) > WORLD_HALF_EXTENT - WORLD_MARGIN;
-        // Land things stay out of lakes and off paths; boats want the water.
-        const wet = lakes.some(
-          (l) =>
-            Math.hypot(p.x - l.x, p.z - l.z) <
-            l.radius + (item.aquatic ? -shape.radius : shape.radius * 0.6),
-        );
+        // Land things stay out of lakes and rivers and off paths; boats want the water.
+        const hit = nearestWater(waterMap, p.x, p.z);
+        const wet =
+          hit !== null && hit.distance < (item.aquatic ? -shape.radius : shape.radius * 0.6);
         const onPath =
           !stackedOn &&
           paths.some((path) => distanceToPolyline(path.points, p) < path.half + shape.radius * 0.5);
@@ -292,7 +291,7 @@ function resolveAnchor(
   }
 
   const pathNode = world.nodes[target];
-  if (pathNode?.procedural?.type === "path") {
+  if (pathNode && isLinear(pathNode)) {
     const polyline = pathPolyline(world, pathNode);
     const mid = polyline[Math.floor(polyline.length / 2)]!;
     return { ...point(mid.x, mid.z), radius: pathWidth(pathNode) / 2, polyline, nodeId: target };

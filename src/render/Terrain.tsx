@@ -5,21 +5,37 @@ import { BufferAttribute, Color, PlaneGeometry } from "three";
 import { createNoise2D } from "@/lib/noise";
 import { useInteraction } from "@/scene/interaction";
 import type { Environment } from "@/scene/schema";
-import { SHORE_FACTOR, TERRAIN_SIZE, carveLakes, getHeightField, type Lake } from "@/scene/terrain";
+import { sceneStore } from "@/scene/store";
+import { TERRAIN_SIZE, getWorldHeightField, nearestWater, waterBodies } from "@/scene/terrain";
 
 const SEGMENTS = 160;
 const SAND = new Color("#c8b48a");
-const LAKE_BED = new Color("#5d6b4f");
+const WATER_BED = new Color("#5d6b4f");
+/** Metres of sandy bank beyond the water's edge. */
+const BANK = 2.5;
 
-export function Terrain({ terrain, lakes }: { terrain: Environment["terrain"]; lakes: Lake[] }) {
+/**
+ * Low-poly terrain from the world's height field (lakes and rivers carved in).
+ * `waterKey` changes only when water changes, so adding objects doesn't
+ * rebuild the 26k-vertex mesh.
+ */
+export function Terrain({
+  terrain,
+  waterKey,
+}: {
+  terrain: Environment["terrain"];
+  waterKey: string;
+}) {
   const { type, seed, height, color } = terrain;
   const setPointer = useInteraction((s) => s.setPointer);
   const select = useInteraction((s) => s.select);
 
-  const geometry = useMemo(
-    () => buildGeometry({ type, seed, height }, lakes, color),
-    [type, seed, height, lakes, color],
-  );
+  const geometry = useMemo(() => {
+    void waterKey;
+    void type;
+    void height;
+    return buildGeometry(seed, color);
+  }, [type, seed, height, color, waterKey]);
 
   return (
     <mesh
@@ -36,13 +52,12 @@ export function Terrain({ terrain, lakes }: { terrain: Environment["terrain"]; l
   );
 }
 
-function buildGeometry(
-  params: Pick<Environment["terrain"], "type" | "seed" | "height">,
-  lakes: Lake[],
-  color: string,
-) {
-  const heightAt = carveLakes(getHeightField(params), lakes);
-  const tint = createNoise2D(params.seed + 1);
+function buildGeometry(seed: number, color: string) {
+  const world = sceneStore.getState().world;
+  const heightAt = getWorldHeightField(world);
+  const water = waterBodies(world);
+  const hasWater = water.lakes.length + water.rivers.length > 0;
+  const tint = createNoise2D(seed + 1);
   const grass = new Color(color);
   const c = new Color();
   const geometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
@@ -57,12 +72,10 @@ function buildGeometry(
     position.setY(i, heightAt(x, z));
 
     c.copy(grass).multiplyScalar(0.9 + 0.1 * tint(x / 9, z / 9));
-    // Sandy shore and a darker lake bed near any lake.
-    for (const lake of lakes) {
-      const t = Math.hypot(x - lake.x, z - lake.z) / lake.radius;
-      if (t < 0.9) c.lerp(LAKE_BED, 0.8);
-      else if (t < SHORE_FACTOR * 0.85) c.lerp(SAND, 0.75);
-    }
+    // Darker bed under water, sandy banks around it.
+    const hit = hasWater ? nearestWater(water, x, z) : null;
+    if (hit && hit.distance < -1) c.lerp(WATER_BED, 0.8);
+    else if (hit && hit.distance < BANK) c.lerp(SAND, 0.75);
     colors.set([c.r, c.g, c.b], i * 3);
   }
   geometry.setAttribute("color", new BufferAttribute(colors, 3));

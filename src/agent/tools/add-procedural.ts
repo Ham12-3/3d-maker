@@ -11,10 +11,25 @@ import {
   type Vec3,
   type World,
 } from "@/scene/schema";
-import { getWorldHeightField, lakeWaterLevel, SHORE_FACTOR } from "@/scene/terrain";
+import {
+  getWorldHeightField,
+  lakeWaterLevel,
+  nearestWater,
+  SHORE_FACTOR,
+  waterBodies,
+} from "@/scene/terrain";
 import { defineTool, fail, fmt, type ToolContext } from "./types";
 
-const TYPES = ["forest", "rocks", "grass", "flowers", "lake", "path", "fireflies"] as const;
+const TYPES = [
+  "forest",
+  "rocks",
+  "grass",
+  "flowers",
+  "lake",
+  "river",
+  "path",
+  "fireflies",
+] as const;
 type FeatureType = (typeof TYPES)[number];
 
 const DEFAULTS: Record<FeatureType, { radius: number; height: number; count?: number }> = {
@@ -23,6 +38,7 @@ const DEFAULTS: Record<FeatureType, { radius: number; height: number; count?: nu
   grass: { radius: 12, height: 0.5, count: 400 },
   flowers: { radius: 5, height: 0.4, count: 120 },
   lake: { radius: 12, height: 0.1 },
+  river: { radius: 3, height: 0.1 },
   path: { radius: 1, height: 0.05 },
   fireflies: { radius: 12, height: 3, count: 120 },
 };
@@ -65,9 +81,14 @@ const input = z.object({
         "near/behind/left_of... place the area's centre.",
     ),
   region: z.string().optional().describe("Fill this region (same as an inside_region relation)"),
-  from: z.string().optional().describe("Path start: node id, region id or 'pointer'"),
-  to: z.string().optional().describe("Path end: node id, region id or 'pointer'"),
-  width: z.number().min(0.5).max(6).optional().describe("Path width in metres (default 1.6)"),
+  from: z.string().optional().describe("Path/river start: node id, region id or 'pointer'"),
+  to: z.string().optional().describe("Path/river end: node id, region id or 'pointer'"),
+  width: z
+    .number()
+    .min(0.5)
+    .max(20)
+    .optional()
+    .describe("Path width (default 1.6) or river width (default 6) in metres"),
 });
 
 export const addProceduralTool = defineTool({
@@ -75,8 +96,9 @@ export const addProceduralTool = defineTool({
   pending: "Growing nature",
   eagerInputStreaming: true,
   description: [
-    "Add a natural feature, efficiently instanced: forest, rocks, grass, flowers, lake, path or fireflies. Use this for anything with more than ~10 copies.",
-    "Lakes carve the terrain and get a sandy shore; forests and grass avoid water, paths and objects automatically.",
+    "Add a natural feature, efficiently instanced: forest, rocks, grass, flowers, lake, river, path or fireflies. Use this for anything with more than ~10 copies.",
+    "Lakes and rivers carve the terrain and get sandy banks; forests and grass avoid water, paths and objects automatically.",
+    "A river with no from/to flows straight across the view through its centre (relations place the centre); with from/to it runs between them (e.g. into a lake).",
     "Typical: lake first, then forest around it, then props on the shore.",
     'Examples: {"type":"lake","id":"lake_1","radius":12}; {"type":"forest","species":"pine","count":60,"radius":18,"relations":[{"predicate":"around","target":"lake_1"}]};',
     '{"type":"path","from":"cabin_1","to":"lake_1"}; {"type":"fireflies","relations":[{"predicate":"inside_region","target":"lake_1"}]}.',
@@ -96,17 +118,32 @@ export const addProceduralTool = defineTool({
     let relations: Relation[] = args.relations ?? [];
     let areaNote = "";
 
-    if (type === "path") {
-      if (!args.from || !args.to) return fail("A path needs both from and to.");
+    let rotationY = 0;
+    if ((type === "path" || type === "river") && args.from && args.to) {
       const from = endpointRef(args.from, ctx);
       const to = endpointRef(args.to, ctx);
       const a = endpointPos(world, from);
       const b = endpointPos(world, to);
-      if (!a || !b) return fail(`Unknown path endpoint: ${!a ? args.from : args.to}`);
-      Object.assign(params, { from, to, width: args.width ?? 1.6 });
+      if (!a || !b) return fail(`Unknown ${type} endpoint: ${!a ? args.from : args.to}`);
+      Object.assign(params, { from, to, width: args.width ?? (type === "river" ? 6 : 1.6) });
       center = [(a[0] + b[0]) / 2, 0, (a[2] + b[2]) / 2];
       relations = [];
       areaNote = `from ${from} to ${to}`;
+    } else if (type === "path") {
+      return fail("A path needs both from and to.");
+    } else if (type === "river") {
+      // Straight across the view (left to right), through a solved centre.
+      const [placement] = solvePlacements(world, [{ id, size: [6, 0.1, 6], relations }], {
+        pointer: ctx.pointer,
+        camera: ctx.camera,
+        seed: ctx.seed,
+      });
+      center = placement!.position;
+      const fx = ctx.camera.target[0] - ctx.camera.position[0];
+      const fz = ctx.camera.target[2] - ctx.camera.position[2];
+      rotationY = Math.atan2(-fz, fx);
+      Object.assign(params, { width: args.width ?? 6, length: 140 });
+      areaNote = `across the view through ${fmt(center)}`;
     } else {
       const area = planFeatureArea(world, { ...args, type, relations }, id, ctx);
       if (typeof area === "string") return fail(area);
@@ -136,9 +173,9 @@ export const addProceduralTool = defineTool({
       procedural: { type, params, seed },
       transform: {
         position: [round(center[0]), round(y), round(center[2])],
-        rotation: [0, 0, 0],
+        rotation: [0, round(rotationY), 0],
         scale:
-          type === "path"
+          type === "path" || type === "river"
             ? [1, defaults.height, Number(params.width)]
             : [outer * 2, defaults.height, outer * 2],
       },
@@ -146,7 +183,7 @@ export const addProceduralTool = defineTool({
       tags: [
         type,
         ...(type === "forest" ? ["tree", String(params.species)] : []),
-        ...(type === "lake" ? ["water"] : []),
+        ...(type === "lake" || type === "river" ? ["water"] : []),
       ],
       createdBy: "agent",
     };
@@ -154,7 +191,7 @@ export const addProceduralTool = defineTool({
     let moved: string[] = [];
     ctx.edit(`Add ${type}`, (draft) => {
       draft.nodes[id] = node;
-      if (type === "lake") moved = clearLakeArea(draft, node);
+      if (type === "lake" || type === "river") moved = clearWaterArea(draft);
     });
 
     const after = ctx.getWorld();
@@ -241,27 +278,30 @@ export function planFeatureArea(
   };
 }
 
-/** After a lake appears: push objects out of the water and re-ground anything on the new shore. */
-function clearLakeArea(world: World, lake: SceneNode): string[] {
-  const r = Number(lake.procedural!.params.radius);
-  const [lx, , lz] = lake.transform.position;
+/**
+ * After new water appears: push objects out of it and re-ground anything on
+ * the new banks (the terrain under them just changed).
+ */
+function clearWaterArea(world: World): string[] {
   const heightAt = getWorldHeightField(world);
+  const water = waterBodies(world);
   const touched: string[] = [];
   for (const n of Object.values(world.nodes)) {
     if (n.kind !== "primitive" && n.kind !== "asset") continue;
     if (n.relations.some((rel) => rel.predicate === "on_top_of")) continue;
-    const y = n.transform.position[1];
-    let [x, , z] = n.transform.position;
-    const d = Math.hypot(x - lx, z - lz);
-    if (d > r * SHORE_FACTOR + 1) continue;
+    if (n.tags.some((t) => t === "boat" || t === "canoe" || t === "lily")) continue;
+    const [x0, y, z0] = n.transform.position;
     const itemR = Math.max(nodeSize(n)[0], nodeSize(n)[2]) / 2;
-    if (d < r + itemR) {
-      const k = (r + itemR + 0.5) / Math.max(d, 0.01);
-      x = lx + (x - lx) * k;
-      z = lz + (z - lz) * k;
+    const hit = nearestWater(water, x0, z0);
+    let x = x0;
+    let z = z0;
+    if (hit && hit.distance < itemR) {
+      const push = itemR - hit.distance + 0.5;
+      x += hit.away.x * push;
+      z += hit.away.z * push;
     }
     const ground = heightAt(x, z);
-    if (Math.abs(ground - y) > 0.01 || x !== n.transform.position[0]) {
+    if (Math.abs(ground - y) > 0.01 || x !== x0 || z !== z0) {
       n.transform.position = [round(x), round(ground), round(z)];
       touched.push(n.id);
     }
@@ -314,6 +354,8 @@ function activityFor(type: FeatureType, instances: number | null): string {
       return "Planted flowers";
     case "lake":
       return "Filled the lake";
+    case "river":
+      return "Carved a river";
     case "path":
       return "Laid a path";
     case "fireflies":
