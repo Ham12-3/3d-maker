@@ -51,6 +51,8 @@ Planned (not built yet): `agent/judge.ts`, `assets/`, `voice/`, `evals/`.
 - The client reads the stream with `BetaMessageStream.fromReadableStream()` and **runs each tool as soon as its `tool_use` block completes**, so the sky changes while Claude is still writing later calls. All tool results go back in one user message.
 - **One command = one transaction = one undo step.** Refusal, `max_tokens` with tool use, a failed request or cancel (Escape) rolls the whole turn back.
 - Caps: 12 tool calls, 3 model round trips per command (`agent/config.ts`).
+- **`say` ends the turn** when every tool in that response succeeded: the loop skips the round trip that would only return `end_turn` (saves ~2.3 s per command). Failures still go back to Claude.
+- Live baseline (Phase 1, Sonnet 5.5 at low effort): ~2.1 s to the first visible change, ~3.4 s per simple command, ~5.7k cached prompt tokens read on every request.
 - Each command is a fresh conversation: user message = scene summary (`agent/summary.ts`) + `COMMAND: ...`. History is append-only within a turn, so preserved-thinking checks never trip.
 - Tool executors are pure functions over a `ToolContext` (no React/globals) so tests and future evals run them headless. Inputs are always zod-validated; failures go back to Claude as `is_error` tool results.
 - `add_objects` lets Claude name ids (`blue_sphere_1`) so later objects in the same call can reference them; taken ids are renamed and relations remapped. Items are solved in dependency order.
