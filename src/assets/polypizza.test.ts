@@ -34,6 +34,12 @@ describe("poly pizza", () => {
     expect(c.score).toBeGreaterThan(toCandidate({ ...fish, Title: "Shark" }, "fish", 0).score);
   });
 
+  it("ranks the head noun above modifiers", () => {
+    const cabin = toCandidate({ ...fish, Title: "Cabin Shed" }, "log cabin", 3);
+    const log = toCandidate({ ...fish, Title: "Wood Log" }, "log cabin", 0);
+    expect(cabin.score).toBeGreaterThan(log.score);
+  });
+
   it("only proxies model files from the Poly Pizza file host", () => {
     expect(isAllowedFileUrl("https://static.poly.pizza/abc.glb")).toBe(true);
     expect(isAllowedFileUrl("https://evil.example/abc.glb")).toBe(false);

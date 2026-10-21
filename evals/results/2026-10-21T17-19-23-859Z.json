@@ -8,9 +8,7 @@
     "medianTotalMs": 3425,
     "medianFirstChangeMs": 1774,
     "totalCostUsd": 0.075323,
-    "models": [
-      "claude-sonnet-5-5"
-    ]
+    "models": ["claude-sonnet-5-5"]
   },
   "rows": [
     {

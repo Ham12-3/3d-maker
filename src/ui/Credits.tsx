@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useMemo, useState } from "react";
+import type { World } from "@/scene/schema";
 import { useScene } from "@/scene/store";
 
 type Credit = { key: string; text: string; license: string };
@@ -9,23 +9,10 @@ type Credit = { key: string; text: string; license: string };
 /** Top right: credits for every model in the world (CC-BY requires attribution). */
 export function Credits() {
   const [open, setOpen] = useState(false);
-  const credits = useScene(
-    useShallow((s) => {
-      const seen = new Map<string, Credit>();
-      for (const n of Object.values(s.world.nodes)) {
-        const a = n.asset;
-        if (!a || a.source === "kenney" || seen.has(a.url)) continue;
-        seen.set(a.url, {
-          key: a.url,
-          text:
-            a.attribution ??
-            `"${n.name}" from ${a.source === "polypizza" ? "Poly Pizza" : a.source}`,
-          license: a.license,
-        });
-      }
-      return [...seen.values()];
-    }),
-  );
+  // Select a string, not fresh objects: a selector returning new objects on
+  // every read makes the store subscription loop forever.
+  const creditsKey = useScene((s) => JSON.stringify(collectCredits(s.world.nodes)));
+  const credits = useMemo(() => JSON.parse(creditsKey) as Credit[], [creditsKey]);
 
   return (
     <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
@@ -60,6 +47,21 @@ export function Credits() {
       )}
     </div>
   );
+}
+
+function collectCredits(nodes: World["nodes"]): Credit[] {
+  const seen = new Map<string, Credit>();
+  for (const n of Object.values(nodes)) {
+    const a = n.asset;
+    if (!a || a.source === "kenney" || seen.has(a.url)) continue;
+    seen.set(a.url, {
+      key: a.url,
+      text:
+        a.attribution ?? `"${n.name}" from ${a.source === "polypizza" ? "Poly Pizza" : a.source}`,
+      license: a.license,
+    });
+  }
+  return [...seen.values()];
 }
 
 /** Attribution strings contain bare URLs; make them clickable. */

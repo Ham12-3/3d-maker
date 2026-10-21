@@ -45,6 +45,8 @@ export function toCandidate(m: PolyModel, query: string, rank: number): AssetCan
   const words = tokenize(query);
   const title = new Set(tokenize(m.Title));
   const hits = words.filter((w) => title.has(w)).length;
+  // The last word is the thing itself ("log cabin" is a cabin, not a log).
+  const head = words.length > 0 && title.has(words.at(-1)!) ? 3 : 0;
   const license = licenseOf(m.Licence);
   return {
     source: "polypizza",
@@ -57,7 +59,7 @@ export function toCandidate(m: PolyModel, query: string, rank: number): AssetCan
     ...(m["Tri Count"] !== undefined ? { triCount: m["Tri Count"] } : {}),
     tags: tokenize(`${m.Title} ${m.Category ?? ""}`),
     // Title matches first, CC0 preferred, then the API's own ranking.
-    score: hits * 2 + (license === "CC0" ? 1 : 0) - rank * 0.05,
+    score: head + hits * 2 + (license === "CC0" ? 1 : 0) - rank * 0.05,
   };
 }
 
