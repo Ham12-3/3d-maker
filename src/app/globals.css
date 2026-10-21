@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Dark glass surface used by every overlay. */
+@utility glass {
+  background-color: rgb(12 14 20 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-radius: 0.875rem;
+  color: rgb(255 255 255 / 0.9);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #0b0d12;
+  color: #fff;
+}

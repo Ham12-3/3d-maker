@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "id": "default",
+  "title": "Untitled world",
+  "nodes": {
+    "box_1": {
+      "id": "box_1",
+      "name": "red box",
+      "kind": "primitive",
+      "primitive": "box",
+      "transform": { "position": [-3, 0, 0], "rotation": [0, 0.4, 0], "scale": [1.5, 1.5, 1.5] },
+      "material": { "color": "#d9534f", "roughness": 0.7 },
+      "relations": [],
+      "tags": ["box", "demo"],
+      "createdBy": "user"
+    },
+    "sphere_1": {
+      "id": "sphere_1",
+      "name": "blue sphere",
+      "kind": "primitive",
+      "primitive": "sphere",
+      "transform": { "position": [0, 0, -1], "rotation": [0, 0, 0], "scale": [1.6, 1.6, 1.6] },
+      "material": { "color": "#4a7fd6", "roughness": 0.35, "metalness": 0.1 },
+      "relations": [],
+      "tags": ["sphere", "demo"],
+      "createdBy": "user"
+    },
+    "pillar_1": {
+      "id": "pillar_1",
+      "name": "stone pillar",
+      "kind": "primitive",
+      "primitive": "cylinder",
+      "transform": { "position": [3.5, 0, 0.5], "rotation": [0, 0, 0], "scale": [0.8, 3, 0.8] },
+      "material": { "color": "#b8b2a6", "roughness": 0.9 },
+      "relations": [],
+      "tags": ["pillar", "stone", "demo"],
+      "createdBy": "user"
+    },
+    "cone_1": {
+      "id": "cone_1",
+      "name": "green cone",
+      "kind": "primitive",
+      "primitive": "cone",
+      "transform": { "position": [6, 0, -4], "rotation": [0, 0, 0], "scale": [2, 4, 2] },
+      "material": { "color": "#3f7d3a", "roughness": 0.8 },
+      "relations": [],
+      "tags": ["cone", "demo"],
+      "createdBy": "user"
+    },
+    "ring_1": {
+      "id": "ring_1",
+      "name": "golden ring",
+      "kind": "primitive",
+      "primitive": "torus",
+      "transform": { "position": [-6, 0, -4], "rotation": [0, 0, 0], "scale": [2, 2, 2] },
+      "material": { "color": "#e0b04a", "roughness": 0.3, "metalness": 0.8 },
+      "relations": [],
+      "tags": ["ring", "demo"],
+      "createdBy": "user"
+    }
+  },
+  "regions": {
+    "centre_clearing": {
+      "id": "centre_clearing",
+      "shape": "circle",
+      "center": [0, 0, 0],
+      "size": [20, 0, 20]
+    }
+  },
+  "environment": {
+    "timeOfDay": 12,
+    "sky": "clear",
+    "fog": { "enabled": false, "color": "#c9d6e3", "density": 0.012 },
+    "sun": { "intensity": 2.4, "color": "#fff4e0" },
+    "ambient": { "intensity": 0.5, "color": "#cfe0ff" },
+    "stars": false,
+    "weather": "none",
+    "terrain": { "type": "hills", "seed": 42, "height": 8, "color": "#6f9a4e" },
+    "postfx": { "bloom": 0.2, "vignette": 0.3, "saturation": 1 },
+    "ambience": "none"
+  },
+  "camera": { "position": [0, 9, 22], "target": [0, 1, 0], "fov": 50 },
+  "macros": {}
+}
