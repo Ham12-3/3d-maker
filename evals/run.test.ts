@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { isProfileName, type ProfileName } from "@/agent/config";
 import { runAgentTurn } from "@/agent/loop";
 import { agentRequest } from "@/agent/request";
 import { mockSearchAllAssets, mockSearchAssets } from "@/agent/test-helpers";
@@ -35,6 +36,8 @@ type Row = {
   validToolCalls: number;
   iterations: number;
   firstChangeMs: number | null;
+  firstVisibleMs: number | null;
+  escalated: string | null;
   totalMs: number;
   inputTokens: number;
   cacheRead: number;
@@ -45,9 +48,30 @@ type Row = {
   error?: string;
 };
 
-// Sonnet 5.5 prices per million tokens (cache writes are 1.25x input).
-const PRICE = { input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 };
+// Prices per million tokens (cache writes 1.25x input, reads 0.1x).
+const PRICES: Record<
+  string,
+  { input: number; cacheWrite: number; cacheRead: number; output: number }
+> = {
+  "claude-sonnet-5-5": { input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 },
+  "claude-haiku-5-5": { input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 },
+};
 const PASS_TARGET = 0.85;
+// What to evaluate: the app's routing (default) or one fixed profile, e.g. EVAL_PROFILE=haiku pnpm evals
+const PROFILE: "routed" | ProfileName = isProfileName(process.env.EVAL_PROFILE)
+  ? process.env.EVAL_PROFILE
+  : "routed";
+
+function costOf(model: string, u: Anthropic.Beta.BetaUsage): number {
+  const p = PRICES[model] ?? PRICES["claude-sonnet-5-5"]!;
+  return (
+    ((u.input_tokens ?? 0) * p.input +
+      (u.cache_creation_input_tokens ?? 0) * p.cacheWrite +
+      (u.cache_read_input_tokens ?? 0) * p.cacheRead +
+      (u.output_tokens ?? 0) * p.output) /
+    1e6
+  );
+}
 
 const CASES_DIR = join(__dirname, "cases");
 const cases: Case[] = readdirSync(CASES_DIR)
@@ -73,15 +97,16 @@ describe.skipIf(!enabled)("evals", () => {
     it(c.name, { timeout: 180_000 }, async () => {
       const store = createSceneStore(baseWorld(c.world));
       const before = store.getState().world;
-      const usage: Anthropic.Beta.BetaUsage[] = [];
+      const usage: { model: string; u: Anthropic.Beta.BetaUsage }[] = [];
       const models = new Set<string>();
       let valid = 0;
 
       const result = await runAgentTurn(c.command, {
-        request: async (messages, signal) => {
-          const stream = client!.beta.messages.stream(agentRequest(messages), { signal });
+        routing: PROFILE,
+        request: async (messages, { signal, profile }) => {
+          const stream = client!.beta.messages.stream(agentRequest(messages, profile), { signal });
           stream.on("finalMessage", (m) => {
-            usage.push(m.usage);
+            usage.push({ model: m.model, u: m.usage });
             models.add(m.model);
           });
           return stream.toReadableStream() as ReadableStream<Uint8Array>;
@@ -107,7 +132,7 @@ describe.skipIf(!enabled)("evals", () => {
         result.status === "done" ? c.assert.map((a) => ({ a, r: runCheck(a, before, after) })) : [];
       const pass = result.status === "done" && checks.every((x) => x.r.pass);
       const sum = (k: keyof Anthropic.Beta.BetaUsage) =>
-        usage.reduce((s, u) => s + (Number(u[k]) || 0), 0);
+        usage.reduce((s, x) => s + (Number(x.u[k]) || 0), 0);
       const tokens = {
         input: sum("input_tokens"),
         cacheRead: sum("cache_read_input_tokens"),
@@ -124,17 +149,14 @@ describe.skipIf(!enabled)("evals", () => {
         validToolCalls: valid,
         iterations: result.iterations,
         firstChangeMs: result.firstChangeMs ?? null,
+        firstVisibleMs: result.firstVisibleMs ?? null,
+        escalated: result.escalated ?? null,
         totalMs: Math.round(result.totalMs),
         inputTokens: tokens.input,
         cacheRead: tokens.cacheRead,
         cacheWrite: tokens.cacheWrite,
         outputTokens: tokens.output,
-        costUsd:
-          (tokens.input * PRICE.input +
-            tokens.cacheWrite * PRICE.cacheWrite +
-            tokens.cacheRead * PRICE.cacheRead +
-            tokens.output * PRICE.output) /
-          1e6,
+        costUsd: usage.reduce((s, x) => s + costOf(x.model, x.u), 0),
         models: [...models].join(","),
         ...(result.error ? { error: result.error } : {}),
       });
@@ -149,6 +171,7 @@ describe.skipIf(!enabled)("evals", () => {
     const tools = rows.reduce((s, r) => s + r.toolCalls, 0);
     const summary = {
       date: new Date().toISOString(),
+      profile: PROFILE,
       cases: rows.length,
       passRate: passed / rows.length,
       validToolCallRate: tools ? rows.reduce((s, r) => s + r.validToolCalls, 0) / tools : 1,
@@ -157,6 +180,10 @@ describe.skipIf(!enabled)("evals", () => {
       medianFirstChangeMs: median(
         rows.flatMap((r) => (r.firstChangeMs === null ? [] : [r.firstChangeMs])),
       ),
+      medianFirstVisibleMs: median(
+        rows.flatMap((r) => (r.firstVisibleMs === null ? [] : [r.firstVisibleMs])),
+      ),
+      escalations: rows.filter((r) => r.escalated).length,
       totalCostUsd: rows.reduce((s, r) => s + r.costUsd, 0),
       models: [...new Set(rows.flatMap((r) => r.models.split(",")))],
     };

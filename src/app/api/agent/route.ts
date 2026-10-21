@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { PROFILES, type ProfileName } from "@/agent/config";
 import { agentRequest } from "@/agent/request";
 import { clientKey, createRateLimiter } from "@/lib/rate-limit";
 
@@ -25,6 +26,8 @@ const BodySchema = z.object({
     )
     .min(1)
     .max(2 * 3 + 1),
+  /** Named model setup; only known names are accepted. */
+  profile: z.enum(Object.keys(PROFILES) as [ProfileName, ...ProfileName[]]).optional(),
 });
 
 let client: Anthropic | null = null;
@@ -52,7 +55,7 @@ export async function POST(req: Request): Promise<Response> {
   client ??= new Anthropic();
   const started = Date.now();
   const stream = client.beta.messages.stream(
-    agentRequest(parsed.data.messages as Anthropic.Beta.BetaMessageParam[]),
+    agentRequest(parsed.data.messages as Anthropic.Beta.BetaMessageParam[], parsed.data.profile),
     { signal: req.signal },
   );
 

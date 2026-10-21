@@ -45,8 +45,8 @@ export async function runCommand(
 
   if (process.env.NODE_ENV === "development") {
     console.info(
-      `[agent] ${result.status} "${text}" tools=${result.toolCalls} iterations=${result.iterations} ` +
-        `first-change=${result.firstChangeMs?.toFixed(0) ?? "-"}ms total=${result.totalMs.toFixed(0)}ms`,
+      `[agent] ${result.status} "${text}" model=${result.model}${result.escalated ? " (escalated)" : ""} tools=${result.toolCalls} iterations=${result.iterations} ` +
+        `first-visible=${result.firstVisibleMs?.toFixed(0) ?? "-"}ms first-change=${result.firstChangeMs?.toFixed(0) ?? "-"}ms total=${result.totalMs.toFixed(0)}ms`,
       result.error ?? "",
     );
   }
@@ -64,9 +64,11 @@ export async function runCommand(
         ? {
             transcribeMs: turnStartedAt - opts.speechEndedAt,
             speechToFirstChangeMs:
-              result.firstChangeMs === undefined
+              (result.firstVisibleMs ?? result.firstChangeMs) === undefined
                 ? undefined
-                : turnStartedAt - opts.speechEndedAt + result.firstChangeMs,
+                : turnStartedAt -
+                  opts.speechEndedAt +
+                  (result.firstVisibleMs ?? result.firstChangeMs)!,
           }
         : {}),
     },

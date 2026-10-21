@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addObjectsTool } from "./add-objects";
 import { addProceduralTool } from "./add-procedural";
 import { createRegionTool } from "./create-region";
+import { escalateTool } from "./escalate";
 import { removeObjectsTool } from "./remove-objects";
 import { sayTool } from "./say";
 import { searchAssetsTool } from "./search-assets";
@@ -24,15 +25,18 @@ export const TOOLS: readonly AgentTool[] = [
   sayTool,
 ] as AgentTool[];
 
-const byName = new Map(TOOLS.map((t) => [t.name, t]));
+/** The fast model also gets `escalate` (last, so the shared tools keep their order). */
+export const FAST_TOOLS: readonly AgentTool[] = [...TOOLS, escalateTool as AgentTool];
+
+const byName = new Map(FAST_TOOLS.map((t) => [t.name, t]));
 
 export function getTool(name: string): AgentTool | undefined {
   return byName.get(name);
 }
 
 /** Claude tool definitions, generated from the zod schemas (one source of truth). */
-export function toolDefinitions(): Anthropic.Beta.BetaTool[] {
-  return TOOLS.map((tool) => {
+export function toolDefinitions(tools: readonly AgentTool[] = TOOLS): Anthropic.Beta.BetaTool[] {
+  return tools.map((tool) => {
     const { $schema: _ignored, ...schema } = z.toJSONSchema(tool.input, { io: "input" }) as Record<
       string,
       unknown

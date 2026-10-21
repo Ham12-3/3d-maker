@@ -108,34 +108,15 @@ export const addProceduralTool = defineTool({
       relations = [];
       areaNote = `from ${from} to ${to}`;
     } else {
-      const radius = args.radius ?? defaults.radius;
-      const around = relations.find((r) => r.predicate === "around");
-      const insideTarget =
-        args.region ?? relations.find((r) => r.predicate === "inside_region")?.target;
-      if (around && type !== "lake") {
-        const anchor = areaOf(world, around.target);
-        if (!anchor) return fail(`Unknown target "${around.target}"`);
-        const inner = anchor.radius * (anchor.isLake ? SHORE_FACTOR : 1) + (around.distance ?? 2);
-        center = [anchor.center[0], 0, anchor.center[2]];
-        Object.assign(params, { radius: inner + radius, innerRadius: inner });
-        areaNote = `ring ${inner.toFixed(0)}-${(inner + radius).toFixed(0)}m around ${around.target}`;
-      } else if (insideTarget && type !== "lake") {
-        const anchor = areaOf(world, insideTarget);
-        if (!anchor) return fail(`Unknown region "${insideTarget}"`);
-        center = [anchor.center[0], 0, anchor.center[2]];
-        Object.assign(params, { radius: Math.min(anchor.radius, args.radius ?? anchor.radius) });
-        relations = [{ predicate: "inside_region", target: insideTarget }];
-        areaNote = `inside ${insideTarget}`;
-      } else {
-        const [placement] = solvePlacements(
-          world,
-          [{ id, size: [radius * 2, defaults.height, radius * 2], relations }],
-          { pointer: ctx.pointer, camera: ctx.camera, seed: ctx.seed },
-        );
-        center = placement!.position;
-        Object.assign(params, { radius });
-        areaNote = `radius ${radius}m at ${fmt(center)}`;
-      }
+      const area = planFeatureArea(world, { ...args, type, relations }, id, ctx);
+      if (typeof area === "string") return fail(area);
+      center = area.center;
+      relations = area.relations;
+      areaNote = area.note;
+      Object.assign(params, {
+        radius: area.outer,
+        ...(area.inner ? { innerRadius: area.inner } : {}),
+      });
     }
 
     if (defaults.count !== undefined) params.count = args.count ?? defaults.count;
@@ -193,6 +174,72 @@ export const addProceduralTool = defineTool({
     return { ok: true, activity: activityFor(type, instances), result: lines.join("\n") };
   },
 });
+
+export type FeatureArea = {
+  center: Vec3;
+  outer: number;
+  inner?: number;
+  relations: Relation[];
+  note: string;
+};
+
+/**
+ * Where an area feature goes: a ring just outside an "around" target, the
+ * whole of an inside_region target, or a disc placed by the solver. Pure and
+ * synchronous, so streaming previews can show the same area early.
+ */
+export function planFeatureArea(
+  world: World,
+  args: {
+    type: Exclude<FeatureType, "path">;
+    radius?: number;
+    relations?: Relation[];
+    region?: string;
+  },
+  id: string,
+  ctx: Pick<ToolContext, "pointer" | "camera" | "seed">,
+): FeatureArea | string {
+  const defaults = DEFAULTS[args.type];
+  const radius = args.radius ?? defaults.radius;
+  const relations = args.relations ?? [];
+  const around = relations.find((r) => r.predicate === "around");
+  const insideTarget =
+    args.region ?? relations.find((r) => r.predicate === "inside_region")?.target;
+
+  if (around && args.type !== "lake") {
+    const anchor = areaOf(world, around.target);
+    if (!anchor) return `Unknown target "${around.target}"`;
+    const inner = anchor.radius * (anchor.isLake ? SHORE_FACTOR : 1) + (around.distance ?? 2);
+    return {
+      center: [anchor.center[0], 0, anchor.center[2]],
+      outer: inner + radius,
+      inner,
+      relations,
+      note: `ring ${inner.toFixed(0)}-${(inner + radius).toFixed(0)}m around ${around.target}`,
+    };
+  }
+  if (insideTarget && args.type !== "lake") {
+    const anchor = areaOf(world, insideTarget);
+    if (!anchor) return `Unknown region "${insideTarget}"`;
+    return {
+      center: [anchor.center[0], 0, anchor.center[2]],
+      outer: Math.min(anchor.radius, args.radius ?? anchor.radius),
+      relations: [{ predicate: "inside_region", target: insideTarget }],
+      note: `inside ${insideTarget}`,
+    };
+  }
+  const [placement] = solvePlacements(
+    world,
+    [{ id, size: [radius * 2, defaults.height, radius * 2], relations }],
+    { pointer: ctx.pointer, camera: ctx.camera, seed: ctx.seed },
+  );
+  return {
+    center: placement!.position,
+    outer: radius,
+    relations,
+    note: `radius ${radius}m at ${fmt(placement!.position)}`,
+  };
+}
 
 /** After a lake appears: push objects out of the water and re-ground anything on the new shore. */
 function clearLakeArea(world: World, lake: SceneNode): string[] {

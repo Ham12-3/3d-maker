@@ -18,19 +18,41 @@ export function DevOverlay() {
         tris · dpr {dpr.toFixed(2)}
       </div>
       {last && (
-        <div>
-          last: first change {last.firstChangeMs?.toFixed(0) ?? "-"}ms · total{" "}
-          {last.totalMs.toFixed(0)}ms · {last.toolCalls} tools · {last.iterations} trips
-          {last.judge?.fixed.length ? ` · judge fixed ${last.judge.fixed.length}` : ""}
-        </div>
+        <>
+          <div>
+            last:{" "}
+            <span className={timingColour(last.firstVisibleMs)}>
+              visible {ms(last.firstVisibleMs)}
+            </span>{" "}
+            · change {ms(last.firstChangeMs)} · total {ms(last.totalMs)}
+          </div>
+          <div>
+            {last.model?.replace("claude-", "") ?? "?"}
+            {last.escalated ? ` (escalated: ${last.escalated})` : ""} · {last.toolCalls} tools ·{" "}
+            {last.iterations} trips
+            {last.judge?.fixed.length ? ` · judge fixed ${last.judge.fixed.length}` : ""}
+          </div>
+        </>
       )}
       {last?.transcribeMs !== undefined && (
         <div>
-          voice: transcript {last.transcribeMs.toFixed(0)}ms · speech end → first change{" "}
-          {last.speechToFirstChangeMs?.toFixed(0) ?? "-"}ms
+          voice: transcript {ms(last.transcribeMs)} · speech end → visible{" "}
+          <span className={timingColour(last.speechToFirstChangeMs)}>
+            {ms(last.speechToFirstChangeMs)}
+          </span>
         </div>
       )}
       <div>voice: {provider ?? "…"}</div>
     </div>
   );
+}
+
+/** Green under the 1.5 s target, amber under 2.5 s. */
+function timingColour(value: number | undefined): string {
+  if (value === undefined) return "";
+  return value < 1500 ? "text-emerald-300" : value < 2500 ? "text-amber-300" : "text-red-300";
+}
+
+function ms(value: number | undefined): string {
+  return value === undefined ? "-" : `${value.toFixed(0)}ms`;
 }

@@ -1,0 +1,9 @@
+{
+  "name": "make the whole scene spooky (restyle)",
+  "world": "lake",
+  "command": "make the whole scene spooky",
+  "assert": [
+    { "check": "env", "path": "fog.enabled", "equals": true },
+    { "check": "env", "path": "timeOfDay", "between": [18.5, 6] }
+  ]
+}

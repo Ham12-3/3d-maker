@@ -4,8 +4,9 @@ import type { StoreApi } from "zustand/vanilla";
 import { computeShot, fogVisibility, type CameraMove } from "@/render/camera/shots";
 import type { SceneStore } from "@/scene/store";
 import type { AssetSearch } from "@/assets/types";
-import { MAX_ITERATIONS, MAX_TOOL_CALLS } from "./config";
+import { MAX_ITERATIONS, MAX_TOOL_CALLS, PROFILES, ROUTING, type ProfileName } from "./config";
 import { formatJudge, judgeWorld, type JudgeReport } from "./judge";
+import { StreamPreview } from "./preview";
 import { focusFor } from "./tools/common";
 import { buildSceneSummary, type SummaryContext } from "./summary";
 import { executeToolCall, getTool, type ToolCallResult } from "./tools";
@@ -24,9 +25,13 @@ import type { ToolContext } from "./tools/types";
 type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ToolResultParam = Anthropic.Beta.BetaToolResultBlockParam;
 
+export type RequestOptions = { signal?: AbortSignal; profile: ProfileName };
+
 export type AgentDeps = {
   /** Send messages to the proxy and return its NDJSON event stream. */
-  request: (messages: MessageParam[], signal?: AbortSignal) => Promise<ReadableStream<Uint8Array>>;
+  request: (messages: MessageParam[], opts: RequestOptions) => Promise<ReadableStream<Uint8Array>>;
+  /** "routed" (default): fast model first, `escalate` hands over to the main one. */
+  routing?: "routed" | ProfileName;
   store: StoreApi<SceneStore>;
   context: SummaryContext;
   moveCamera: (move: CameraMove) => void;
@@ -49,9 +54,14 @@ export type TurnResult = {
   iterations: number;
   /** ms from start to the first tool that changed something, and to the end. */
   firstChangeMs?: number;
+  /** ms to the first thing the user could see: a streaming preview or a real change. */
+  firstVisibleMs?: number;
   totalMs: number;
   /** What the judge fixed itself, and what it still had to report. */
   judge?: { fixed: string[]; hard: string[] };
+  /** Model that finished the turn, and why it was escalated (if it was). */
+  model?: string;
+  escalated?: string;
 };
 
 export async function runAgentTurn(command: string, deps: AgentDeps): Promise<TurnResult> {
@@ -61,8 +71,13 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
   let toolCalls = 0;
   let iterations = 0;
   let firstChangeMs: number | undefined;
+  let firstVisibleMs: number | undefined;
   let bigBuild = false;
   let cameraMoved = false;
+  const routing = deps.routing ?? "routed";
+  let profile: ProfileName = routing === "routed" ? ROUTING.fast : routing;
+  let escalated: string | undefined;
+  let escalateReason: string | undefined;
 
   const ctx: ToolContext = {
     getWorld: () => store.getState().world,
@@ -78,7 +93,21 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
     candidates: new Map(),
   };
 
+  const markVisible = () => {
+    firstVisibleMs ??= now() - started;
+  };
+  const preview = new StreamPreview(ctx, markVisible);
+
   const runTool = async (block: Anthropic.Beta.BetaToolUseBlock): Promise<ToolResultParam> => {
+    if (block.name === "escalate") {
+      escalateReason = String(
+        (block.input as { reason?: unknown } | null)?.reason ?? "complex command",
+      );
+      deps.onActivity?.("Thinking harder");
+      return toolResult(block.id, false, "Handing over.");
+    }
+    // After an escalate, the main model redoes the whole command.
+    if (escalateReason) return toolResult(block.id, true, "Skipped: escalated.");
     if (toolCalls >= MAX_TOOL_CALLS) {
       return toolResult(
         block.id,
@@ -88,8 +117,10 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
     }
     toolCalls++;
     const result = await executeToolCall(block.name, block.input, ctx);
+    preview.clearBlock(block.id);
     if (!result.isError) {
       firstChangeMs ??= now() - started;
+      markVisible();
       if (result.activity) deps.onActivity?.(result.activity);
       if (block.name === "set_camera") cameraMoved = true;
       const type = (block.input as { type?: string } | null)?.type;
@@ -101,17 +132,20 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
   };
 
   const summary = buildSceneSummary(store.getState().world, deps.context);
-  const messages: MessageParam[] = [{ role: "user", content: `${summary}\n\nCOMMAND: ${command}` }];
+  const firstMessage: MessageParam = { role: "user", content: `${summary}\n\nCOMMAND: ${command}` };
+  let messages: MessageParam[] = [firstMessage];
   let judgeSent = false;
   let judge: TurnResult["judge"];
+  const label = command.length > 48 ? `${command.slice(0, 45)}...` : command;
 
-  store.getState().beginTransaction(command.length > 48 ? `${command.slice(0, 45)}...` : command);
+  store.getState().beginTransaction(label);
   try {
     while (iterations < MAX_ITERATIONS) {
       iterations++;
       deps.onActivity?.(iterations === 1 ? "Thinking" : "Continuing");
-      const body = await deps.request(messages, deps.signal);
+      const body = await deps.request(messages, { signal: deps.signal, profile });
       const stream = BetaMessageStream.fromReadableStream(body);
+      let streaming: { id: string; name: string } | null = null;
       // Tools run one after another, each as soon as its block finishes streaming.
       let queue: Promise<unknown> = Promise.resolve();
       const results = new Map<string, Promise<ToolResultParam>>();
@@ -124,9 +158,14 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
 
       stream.on("streamEvent", (event) => {
         if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+          streaming = { id: event.content_block.id, name: event.content_block.name };
           const pending = getTool(event.content_block.name)?.pending;
           if (pending) deps.onActivity?.(pending);
         }
+      });
+      // Partial tool input as it streams: show what's already decided.
+      stream.on("inputJson", (_delta, snapshot) => {
+        if (streaming && !escalateReason) preview.update(streaming.id, streaming.name, snapshot);
       });
       stream.on("contentBlock", (block) => {
         if (block.type === "tool_use") enqueue(block);
@@ -142,6 +181,26 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       if (message.stop_reason === "max_tokens" && toolUses.length > 0) {
         // A truncated tool input can still parse; don't keep its effects.
         throw new AgentError("The response was cut off before it finished. Try a smaller request.");
+      }
+
+      // Escalation: undo anything the fast model did and start over on the main model.
+      if (escalateReason && profile !== ROUTING.main) {
+        escalated = escalateReason;
+        escalateReason = undefined;
+        store.getState().rollbackTransaction();
+        store.getState().beginTransaction(label);
+        preview.clearAll();
+        ctx.candidates.clear();
+        profile = ROUTING.main;
+        messages = [firstMessage];
+        iterations = 0;
+        toolCalls = 0;
+        judgeSent = false;
+        judge = undefined;
+        bigBuild = false;
+        cameraMoved = false;
+        firstChangeMs = undefined;
+        continue;
       }
 
       // `say` is Claude's sign-off: with everything succeeded there is nothing to
@@ -170,6 +229,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       messages.push({ role: "user", content: toolResults });
     }
 
+    preview.clearAll();
     store.getState().commitTransaction();
     // A new lake or forest can swallow the view (the camera may end up inside
     // the trees). Unless Claude chose a shot itself, pull back to frame it.
@@ -191,10 +251,14 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       toolCalls,
       iterations,
       firstChangeMs,
+      firstVisibleMs,
       totalMs: now() - started,
       judge,
+      model: PROFILES[profile].model,
+      ...(escalated ? { escalated } : {}),
     };
   } catch (err) {
+    preview.clearAll();
     store.getState().rollbackTransaction();
     const cancelled = deps.signal?.aborted ?? false;
     return {
@@ -203,7 +267,10 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       toolCalls,
       iterations,
       firstChangeMs,
+      firstVisibleMs,
       totalMs: now() - started,
+      model: PROFILES[profile].model,
+      ...(escalated ? { escalated } : {}),
     };
   }
 }
@@ -244,11 +311,11 @@ function toolResult(id: string, isError: boolean, content: string): ToolResultPa
 }
 
 /** Browser transport: POST to the proxy, turn JSON errors into readable messages. */
-export async function requestAgent(messages: MessageParam[], signal?: AbortSignal) {
+export async function requestAgent(messages: MessageParam[], { signal, profile }: RequestOptions) {
   const res = await fetch("/api/agent", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, profile }),
     signal,
   });
   if (!res.ok || !res.body) {

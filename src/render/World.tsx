@@ -7,6 +7,7 @@ import { useInteraction } from "@/scene/interaction";
 import type { SceneNode } from "@/scene/schema";
 import { useScene } from "@/scene/store";
 import { lakesOf, type Lake as LakeShape } from "@/scene/terrain";
+import { Ghosts } from "./Ghosts";
 import { AssetModel } from "./nodes/AssetModel";
 import { Fireflies } from "./nodes/Fireflies";
 import { Lake } from "./nodes/Lake";
@@ -30,6 +31,7 @@ export function World() {
       <SkySystem env={env} />
       <Terrain terrain={env.terrain} lakes={lakes} />
       <PointerMarker />
+      <Ghosts />
       {nodeIds.map((id) => (
         <NodeView key={id} id={id} />
       ))}

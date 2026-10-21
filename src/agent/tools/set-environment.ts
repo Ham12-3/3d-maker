@@ -31,6 +31,8 @@ const input = z.object({
 export const setEnvironmentTool = defineTool({
   name: "set_environment",
   pending: "Changing the environment",
+  // Streamed so finished fields can preview (the sky starts turning early).
+  eagerInputStreaming: true,
   description: [
     "Change the world's environment: time of day, sky, fog, sun, ambient light, stars, weather, terrain, post effects.",
     "Only send the fields you want to change; nested objects (fog, sun, terrain...) are merged. Changes animate smoothly.",

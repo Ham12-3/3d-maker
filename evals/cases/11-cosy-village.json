@@ -1,0 +1,13 @@
+{
+  "name": "cosy village square (composition)",
+  "world": "empty",
+  "command": "build a cosy village square with a stone well in the middle, three small houses around it, two benches and some lanterns",
+  "assert": [
+    { "check": "count", "tag": "well", "min": 1, "newOnly": true },
+    { "check": "count", "tag": "house", "min": 3, "newOnly": true },
+    { "check": "count", "tag": "bench", "min": 2, "newOnly": true },
+    { "check": "count", "tag": "lantern", "min": 2, "newOnly": true },
+    { "check": "dry" },
+    { "check": "judgeClean" }
+  ]
+}

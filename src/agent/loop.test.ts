@@ -79,11 +79,13 @@ function fakeResponse(blocks: Block[], stopReason: string): ReadableStream<Uint8
 function setup(responses: ReadableStream<Uint8Array>[]) {
   const store = createSceneStore(loadDefaultWorld());
   const requests: Anthropic.Beta.BetaMessageParam[][] = [];
+  const profiles: string[] = [];
   const said: string[] = [];
   const activity: string[] = [];
   const deps: AgentDeps = {
-    request: async (messages) => {
+    request: async (messages, { profile }) => {
       requests.push(structuredClone(messages));
+      profiles.push(profile);
       const next = responses.shift();
       if (!next) throw new Error("no more fake responses");
       return next;
@@ -97,8 +99,64 @@ function setup(responses: ReadableStream<Uint8Array>[]) {
     onActivity: (a) => activity.push(a),
     seed: 3,
   };
-  return { store, deps, requests, said, activity };
+  return { store, deps, requests, profiles, said, activity };
 }
+
+describe("model routing", () => {
+  it("starts on the fast model and redoes the turn on the main model after escalate", async () => {
+    const { store, deps, profiles, requests } = setup([
+      // Fast model: escalates, but (against instructions) also starts building.
+      fakeResponse(
+        [
+          { tool: "escalate", input: { reason: "multi-building village" } },
+          { tool: "add_objects", input: { objects: [{ name: "stray box", shape: "box" }] } },
+        ],
+        "tool_use",
+      ),
+      // Main model builds the real thing.
+      fakeResponse(
+        [
+          { tool: "add_objects", input: { objects: [{ name: "well", shape: "cylinder" }] } },
+          { tool: "say", input: { text: "Village started." } },
+        ],
+        "tool_use",
+      ),
+    ]);
+    const before = store.getState().world;
+    const result = await runAgentTurn("build a cosy village", deps);
+
+    expect(profiles).toEqual(["haiku", "sonnet"]);
+    expect(result).toMatchObject({
+      status: "done",
+      model: "claude-sonnet-5-5",
+      escalated: "multi-building village",
+    });
+    const world = store.getState().world;
+    expect(world.nodes.stray_box_1).toBeUndefined();
+    expect(world.nodes.well_1).toBeDefined();
+    // The main model starts fresh from the original request.
+    expect(requests[1]).toEqual(requests[0]);
+    // Still one undo step that restores the start.
+    store.getState().undo();
+    expect(store.getState().world).toEqual(before);
+  });
+
+  it("stays on the fast model when it doesn't escalate, and can be pinned to one profile", async () => {
+    const fast = setup([
+      fakeResponse([{ tool: "set_environment", input: { timeOfDay: 22 } }], "end_turn"),
+    ]);
+    const r1 = await runAgentTurn("make it night", fast.deps);
+    expect(fast.profiles).toEqual(["haiku"]);
+    expect(r1.model).toBe("claude-haiku-5-5");
+    expect(r1.firstVisibleMs).toBeDefined();
+
+    const pinned = setup([
+      fakeResponse([{ tool: "set_environment", input: { timeOfDay: 22 } }], "end_turn"),
+    ]);
+    await runAgentTurn("make it night", { ...pinned.deps, routing: "sonnet" });
+    expect(pinned.profiles).toEqual(["sonnet"]);
+  });
+});
 
 describe("agent loop", () => {
   it("runs the sunset + red box next to blue sphere turn as one undo step", async () => {

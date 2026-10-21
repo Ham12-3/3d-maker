@@ -66,7 +66,9 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - **Auto-framing:** if a turn adds a lake or forest and Claude didn't call `set_camera`, the client plays an establishing shot of the whole scene, never further back than the fog lets you see (`fogVisibility`).
 - Each command is a fresh conversation: user message = scene summary + `COMMAND: ...`. History is append-only within a turn.
 - Tool executors are pure functions over a `ToolContext` (no React/globals; asset search injected), so tests and evals run them headless. Inputs are always zod-validated; failures go back as `is_error` tool results.
-- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `set_camera`, `say`.
+- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `set_camera`, `say`, and `escalate` (fast model only).
+- **Model routing** (`agent/config.ts`): profiles `sonnet`, `sonnet-nothink`, `haiku`, `haiku-nothink`; the app runs `ROUTING` = Haiku 5.5 first. Haiku may call `escalate` (first and alone) for multi-part compositions or whole-scene restyles; the loop rolls back anything already done and reruns the command from the original message on Sonnet 5.5. The client sends the profile name to `/api/agent`, which only accepts known names. `TurnResult.model` / `escalated` record who handled it.
+- **Streaming previews** (`agent/preview.ts`): all creating tools and `set_environment` use `eager_input_streaming`. On each `inputJson` snapshot only the finished part is used (every key/element but the last): finished `set_environment` fields are applied inside the turn's transaction (the sky starts turning early), and `add_objects` / `add_procedural` show ghost boxes / discs / rings (`render/Ghosts.tsx`) at solved positions until the tool runs. `TurnResult.firstVisibleMs` = first preview or real change.
 
 ## Assets
 
@@ -105,7 +107,16 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 ## Evals
 
 - `pnpm evals` runs `evals/cases/*.json` against real Claude with the exact app request, headless store + solver, asset search mocked (`agent/test-helpers.ts`). Checks are declarative (`evals/checks.ts`). Target pass rate 85%. Results (pass, tool validity, tool calls, latency, tokens, cost, model) go to `evals/results/`.
-- Baseline (Phase 2, 10 cases): 100% pass, 100% valid tool calls, 2.3 tool calls/command, median 1.7 s to first change and 2.9 s per command, $0.085 per run.
+- `EVAL_PROFILE=<profile> pnpm evals` pins one model setup; the default evaluates the app's routing. Cost is priced per response by the model that served it.
+- Phase 4 measurements (12 cases incl. a village composition and a whole-scene restyle):
+
+  | setup                | pass                                      | first visible p50 / p90                        | total p50 | cost/run |
+  | -------------------- | ----------------------------------------- | ---------------------------------------------- | --------- | -------- |
+  | routed (Haiku first) | 12/12, escalated exactly the 2 hard cases | 1.45 s / 2.5 s (simple commands only: ~1.36 s) | 2.1 s     | $0.042   |
+  | Sonnet only          | 12/12                                     | 1.44 s / 2.6 s                                 | 4.2 s     | $0.092   |
+
+  Earlier single-profile runs (10 simple cases): Haiku 1.23 s to first change vs Sonnet 1.85 s; Sonnet with `between_tools` was slower (2.34 s), so it is not used.
+
 - `pnpm test` skips evals; vitest `--mode evals` (or `EVALS=1`) enables them.
 
 ## Decisions log
@@ -115,7 +126,7 @@ Planned (not built yet): local Whisper engine (optional), visual critique, macro
 - **React pinned to 19.3.x.** R3F 9.8 peer range is `>=19 <19.4`.
 - **Immer used directly, not zustand's immer middleware**, because the middleware doesn't expose patches.
 - **No partial-JSON dependency.** The SDK's own stream reader parses partial tool input; Phase 4 ghosts will use that.
-- **Model:** Sonnet 5.5 (`claude-sonnet-5-5`) at effort `low` with adaptive thinking (Sonnet 5.5 rejects `thinking: disabled` and forced `tool_choice`). Server-side refusal fallback on (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`), so the beta Messages API and Beta types are used throughout. Haiku 5.5 routing arrives in Phase 4.
+- **Models:** Haiku 5.5 (`claude-haiku-5-5`, effort `low`, adaptive thinking) first, escalating to Sonnet 5.5 (`claude-sonnet-5-5`, effort `low`, adaptive). Sonnet 5.5 rejects `thinking: disabled` and forced `tool_choice`. Sonnet requests use the server-side refusal fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`); Haiku 5.5 has no server-side fallback, so its requests omit it. The beta Messages API and Beta types are used throughout. Caches are per model, so each profile warms its own prefix.
 - **Prompt caching:** `cache_control` on the system block caches tools + system. Keep both byte-identical between requests. The server logs `cache_read` per request.
 - **Kenney kits:** Nature, Holiday and Survival (CC0). The Holiday Kit's cabin is modular pieces, so cabins/houses come from Poly Pizza.
 - **Fog guidance:** densities are tuned to scene scale (0.012 misty); exp2 fog hides beyond ~0.85/density metres.
