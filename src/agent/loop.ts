@@ -85,9 +85,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
   const summary = buildSceneSummary(store.getState().world, deps.context);
   const messages: MessageParam[] = [{ role: "user", content: `${summary}\n\nCOMMAND: ${command}` }];
 
-  store
-    .getState()
-    .beginTransaction(`"${command.length > 48 ? `${command.slice(0, 45)}...` : command}"`);
+  store.getState().beginTransaction(command.length > 48 ? `${command.slice(0, 45)}...` : command);
   try {
     while (iterations < MAX_ITERATIONS) {
       iterations++;
@@ -119,11 +117,13 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
       if (message.stop_reason !== "tool_use" || toolUses.length === 0) break;
       if (iterations >= MAX_ITERATIONS) break;
 
+      const toolResults = toolUses.map((block) => results.get(block.id) ?? runTool(block));
+      // `say` is Claude's sign-off. If everything succeeded there is nothing left
+      // to react to, so skip the round trip that would only return "end_turn".
+      if (toolUses.some((b) => b.name === "say") && toolResults.every((r) => !r.is_error)) break;
+
       messages.push({ role: "assistant", content: message.content });
-      messages.push({
-        role: "user",
-        content: toolUses.map((block) => results.get(block.id) ?? runTool(block)),
-      });
+      messages.push({ role: "user", content: toolResults });
     }
 
     store.getState().commitTransaction();

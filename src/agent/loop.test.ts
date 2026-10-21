@@ -129,7 +129,6 @@ describe("agent loop", () => {
         ],
         "tool_use",
       ),
-      fakeResponse([], "end_turn"),
     ]);
     const before = store.getState().world;
 
@@ -138,7 +137,9 @@ describe("agent loop", () => {
       deps,
     );
 
-    expect(result).toMatchObject({ status: "done", toolCalls: 3, iterations: 2 });
+    // All tools succeeded and Claude signed off with say: no second round trip.
+    expect(result).toMatchObject({ status: "done", toolCalls: 3, iterations: 1 });
+    expect(requests).toHaveLength(1);
     expect(result.firstChangeMs).toBeDefined();
     const world = store.getState().world;
     expect(world.environment).toMatchObject({ timeOfDay: 18, sky: "sunset" });
@@ -146,17 +147,49 @@ describe("agent loop", () => {
     expect(world.nodes.red_box_1?.relations[0]?.target).toBe("blue_sphere_1");
     expect(said).toEqual(["Sunset with fog, box beside the sphere."]);
 
-    // First request carries the scene summary; the second returns all three results in one message.
+    // The request carries the scene summary and the command.
     expect(requests[0]![0]!.content).toMatch(/^ENV: time 12\.0/);
     expect(requests[0]![0]!.content).toMatch(/COMMAND: make it sunset/);
-    const results = requests[1]![2]!.content as Anthropic.Beta.BetaToolResultBlockParam[];
-    expect(results.map((r) => r.tool_use_id)).toEqual(["toolu_0", "toolu_1", "toolu_2"]);
-    expect(results.every((r) => !r.is_error)).toBe(true);
 
     // One undo reverts the whole turn.
     expect(store.getState().past).toHaveLength(1);
     store.getState().undo();
     expect(store.getState().world).toEqual(before);
+  });
+
+  it("returns every tool result in one message when Claude has not signed off", async () => {
+    const { deps, requests } = setup([
+      fakeResponse(
+        [
+          { tool: "set_environment", input: { timeOfDay: 22, stars: true } },
+          { tool: "add_objects", input: { objects: [{ name: "lamp", shape: "cylinder" }] } },
+        ],
+        "tool_use",
+      ),
+      fakeResponse([], "end_turn"),
+    ]);
+    const result = await runAgentTurn("night with a lamp", deps);
+    expect(result).toMatchObject({ status: "done", toolCalls: 2, iterations: 2 });
+    const results = requests[1]![2]!.content as Anthropic.Beta.BetaToolResultBlockParam[];
+    expect(results.map((r) => r.tool_use_id)).toEqual(["toolu_0", "toolu_1"]);
+    expect(results.every((r) => !r.is_error)).toBe(true);
+  });
+
+  it("still sends results back when a tool failed, even after say", async () => {
+    const { deps, requests } = setup([
+      fakeResponse(
+        [
+          { tool: "remove_objects", input: { ids: ["ghost_1"] } },
+          { tool: "say", input: { text: "Removed it." } },
+        ],
+        "tool_use",
+      ),
+      fakeResponse([], "end_turn"),
+    ]);
+    const result = await runAgentTurn("remove the ghost", deps);
+    expect(result.iterations).toBe(2);
+    const results = requests[1]![2]!.content as Anthropic.Beta.BetaToolResultBlockParam[];
+    expect(results[0]?.is_error).toBe(true);
   });
 
   it("sends validation errors back to Claude so it can fix them", async () => {
