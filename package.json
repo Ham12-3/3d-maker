@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "evals": "vitest run evals --mode evals"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.137.0",

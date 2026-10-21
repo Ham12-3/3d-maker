@@ -10,7 +10,12 @@ const input = z.object({
     .optional()
     .describe("0-24. Sunrise ~5.5, noon 12, golden hour 17.5, sunset 18.3, night 20-4"),
   sky: E.sky.optional(),
-  fog: E.fog.partial().optional().describe("density 0.005 light haze, 0.02 misty, 0.05 thick"),
+  fog: E.fog
+    .partial()
+    .optional()
+    .describe(
+      "density 0.004 light haze, 0.008 light mist, 0.012 misty, 0.025 thick (you can see about 0.85/density metres)",
+    ),
   sun: E.sun.partial().optional(),
   ambient: E.ambient.partial().optional(),
   stars: E.stars.optional(),
@@ -32,7 +37,7 @@ export const setEnvironmentTool = defineTool({
     "Call this first for mood changes ('make it night', 'foggy', 'sunset') before adding objects.",
     "Keep fog colour matching the sky: warm peach at sunset, pale grey-blue by day, deep navy at night.",
     'Examples: night => {"timeOfDay":22,"sky":"night","stars":true,"fog":{"color":"#0b1430"}}.',
-    'Misty sunset => {"timeOfDay":18,"sky":"sunset","fog":{"enabled":true,"color":"#e9a07c","density":0.02}}.',
+    'Misty sunset => {"timeOfDay":18,"sky":"sunset","fog":{"enabled":true,"color":"#e9a07c","density":0.01}}.',
   ].join(" "),
   input,
   execute(patch, ctx) {

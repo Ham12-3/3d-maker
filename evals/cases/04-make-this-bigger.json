@@ -1,0 +1,10 @@
+{
+  "name": "make this bigger (selection)",
+  "world": "lake",
+  "selection": "rock_2",
+  "command": "make this bigger",
+  "assert": [
+    { "check": "scaleIncreased", "id": "rock_2" },
+    { "check": "unchangedExcept", "ids": ["rock_2"] }
+  ]
+}

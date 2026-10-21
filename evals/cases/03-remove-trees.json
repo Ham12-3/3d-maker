@@ -1,0 +1,6 @@
+{
+  "name": "remove all the trees",
+  "world": "lake",
+  "command": "remove all the trees",
+  "assert": [{ "check": "none", "tag": "tree" }]
+}

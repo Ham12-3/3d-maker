@@ -9,7 +9,7 @@ import {
   type PrimitiveShape,
 } from "@/scene/schema";
 import { sceneStore, useScene } from "@/scene/store";
-import { FLAT_RADIUS, getHeightField } from "@/scene/terrain";
+import { FLAT_RADIUS, getWorldHeightField } from "@/scene/terrain";
 
 const COLOURS = ["#d9534f", "#4a7fd6", "#e0b04a", "#3f7d3a", "#9b6bd6", "#e07a4a"];
 
@@ -30,7 +30,7 @@ export function DevPanel() {
   const endDrag = () => sceneStore.getState().commitTransaction();
 
   return (
-    <div className="glass absolute top-4 right-4 w-64 space-y-3 p-4 text-xs">
+    <div className="glass absolute top-16 right-4 w-64 space-y-3 p-4 text-xs">
       <div className="text-[10px] font-semibold tracking-widest text-white/50 uppercase">
         Dev panel
       </div>
@@ -132,7 +132,7 @@ function addRandomPrimitive() {
       kind: "primitive",
       primitive: shape as PrimitiveShape,
       transform: {
-        position: [x, getHeightField(world.environment.terrain)(x, z), z],
+        position: [x, getWorldHeightField(world)(x, z), z],
         rotation: [0, Math.random() * Math.PI, 0],
         scale: [size, size, size],
       },

@@ -1,0 +1,10 @@
+{
+  "name": "cabin by the lake",
+  "world": "lake",
+  "command": "add a cabin by the lake",
+  "assert": [
+    { "check": "count", "tag": "cabin", "equals": 1, "newOnly": true },
+    { "check": "near", "tag": "cabin", "target": "lake_1", "min": 10, "max": 25, "newOnly": true },
+    { "check": "dry" }
+  ]
+}

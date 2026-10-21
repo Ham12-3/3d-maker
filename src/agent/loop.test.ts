@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadDefaultWorld } from "@/scene/defaults";
 import { createSceneStore } from "@/scene/store";
 import { runAgentTurn, type AgentDeps } from "./loop";
+import { mockSearchAllAssets, mockSearchAssets } from "./test-helpers";
 
 type Block = { tool: string; input: unknown; id?: string } | { text: string };
 
@@ -91,6 +92,8 @@ function setup(responses: ReadableStream<Uint8Array>[]) {
     context: { selection: null, pointer: null, camera: store.getState().world.camera },
     moveCamera: () => {},
     say: (t) => said.push(t),
+    searchAssets: mockSearchAssets,
+    searchAllAssets: mockSearchAllAssets,
     onActivity: (a) => activity.push(a),
     seed: 3,
   };

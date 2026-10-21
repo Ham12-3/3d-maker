@@ -47,7 +47,13 @@ export function buildSceneSummary(world: World, ctx: SummaryContext): string {
 }
 
 function nodeLine(n: SceneNode): string {
-  const kind = n.kind === "primitive" ? `primitive ${n.primitive}` : n.kind;
+  if (n.procedural) return featureLine(n);
+  const kind =
+    n.kind === "primitive"
+      ? `primitive ${n.primitive}`
+      : n.kind === "asset"
+        ? `model(${n.asset?.source})`
+        : n.kind;
   const size = nodeSize(n)
     .map((v) => +v.toFixed(1))
     .join("x");
@@ -57,6 +63,26 @@ function nodeLine(n: SceneNode): string {
     : "";
   const tags = n.tags.length ? ` [${n.tags.join(",")}]` : "";
   return `${n.id} ${kind} "${n.name}" @${fmt(n.transform.position)}${rels} ${size}m${colour}${tags}`;
+}
+
+/** Nature features read better as what they are than as boxes. */
+function featureLine(n: SceneNode): string {
+  const p = n.procedural!.params;
+  const at = fmt(n.transform.position);
+  switch (n.procedural!.type) {
+    case "lake":
+      return `${n.id} lake r${p.radius}m water@${at}`;
+    case "path":
+      return `${n.id} path ${String(p.from)} -> ${String(p.to)}, ${p.width}m wide`;
+    default: {
+      const area = p.innerRadius
+        ? `ring ${Number(p.innerRadius).toFixed(0)}-${Number(p.radius).toFixed(0)}m`
+        : `r${Number(p.radius).toFixed(0)}m`;
+      const rel = n.relations[0] ? ` ${n.relations[0].predicate} ${n.relations[0].target}` : "";
+      const kind = p.species ? `${n.procedural!.type} (${String(p.species)})` : n.procedural!.type;
+      return `${n.id} ${kind} x${p.count ?? "?"} ${area}${rel} centre ${at}`;
+    }
+  }
 }
 
 function groupedLines(nodes: SceneNode[]): string[] {

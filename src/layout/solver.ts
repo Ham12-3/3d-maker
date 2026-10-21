@@ -1,6 +1,13 @@
 import { createRng } from "@/lib/random";
 import type { CameraState, Relation, SceneNode, Vec3, World } from "@/scene/schema";
-import { WORLD_HALF_EXTENT, getHeightField, type HeightField } from "@/scene/terrain";
+import {
+  WORLD_HALF_EXTENT,
+  getWorldHeightField,
+  lakesOf,
+  waterLevelAt,
+  type HeightField,
+} from "@/scene/terrain";
+import { distanceToPolyline, pathPolyline, pathWidth } from "./paths";
 import {
   POSITIONAL,
   candidates,
@@ -29,6 +36,8 @@ export type PlacementItem = {
   /** Explicit position given by the user; only snapped to the ground. */
   position?: Vec3;
   group?: Group;
+  /** Boats, lily pads: belong on water instead of being kept out of it. */
+  aquatic?: boolean;
 };
 
 export type SolveContext = {
@@ -55,10 +64,14 @@ export function solvePlacements(
   items: PlacementItem[],
   ctx: SolveContext,
 ): Placement[] {
-  const heightAt = getHeightField(world.environment.terrain);
+  const heightAt = getWorldHeightField(world);
   const axes = viewAxes(ctx.camera);
   const hash = new SpatialHash();
   const placed = new Map<string, { position: Vec3; size: Vec3; rotationY: number }>();
+  const lakes = lakesOf(world);
+  const paths = Object.values(world.nodes)
+    .filter((n) => n.procedural?.type === "path")
+    .map((n) => ({ points: pathPolyline(world, n), half: pathWidth(n) / 2 }));
 
   for (const node of Object.values(world.nodes)) {
     if (!blocksPlacement(node)) continue;
@@ -128,8 +141,22 @@ export function solvePlacements(
         const outside =
           Math.abs(p.x) > WORLD_HALF_EXTENT - WORLD_MARGIN ||
           Math.abs(p.z) > WORLD_HALF_EXTENT - WORLD_MARGIN;
+        // Land things stay out of lakes and off paths; boats want the water.
+        const wet = lakes.some(
+          (l) =>
+            Math.hypot(p.x - l.x, p.z - l.z) <
+            l.radius + (item.aquatic ? -shape.radius : shape.radius * 0.6),
+        );
+        const onPath =
+          !stackedOn &&
+          paths.some((path) => distanceToPolyline(path.points, p) < path.half + shape.radius * 0.5);
         return (
-          relScore - overlaps.length * 2 - (outside ? 10 : 0) + (inView(ctx.camera, p) ? 0.15 : 0)
+          relScore -
+          overlaps.length * 2 -
+          (outside ? 10 : 0) -
+          (wet !== Boolean(item.aquatic) ? 4 : 0) -
+          (onPath ? 2 : 0) +
+          (inView(ctx.camera, p) ? 0.15 : 0)
         );
       });
     }
@@ -145,11 +172,14 @@ export function solvePlacements(
         r.rel.predicate === "on_top_of" && score(r.rel, r.anchor, shape, axes, best) >= SATISFIED,
     );
     const ground = heightAt(best.x, best.z);
+    const water = item.aquatic ? waterLevelAt(world, best.x, best.z) : null;
     const y = onTop
       ? onTop.anchor.top
-      : item.position
-        ? Math.max(item.position[1], ground)
-        : ground;
+      : water !== null
+        ? water
+        : item.position
+          ? Math.max(item.position[1], ground)
+          : ground;
 
     const facing = resolved.find((r) => r.rel.predicate === "facing");
     const rotationY = facing ? yawTowards(best, facing.anchor.center) : 0;
@@ -173,7 +203,7 @@ export function followMovedAnchors(
   movedIds: string[],
   before: Map<string, Vec3>,
 ): string[] {
-  const heightAt = getHeightField(world.environment.terrain);
+  const heightAt = getWorldHeightField(world);
   const deltas = new Map<string, Point2>();
   for (const id of movedIds) {
     const prev = before.get(id);
@@ -259,6 +289,13 @@ function resolveAnchor(
       return ctx.pointer
         ? point(ctx.pointer[0], ctx.pointer[2])
         : point(ctx.camera.target[0], ctx.camera.target[2]);
+  }
+
+  const pathNode = world.nodes[target];
+  if (pathNode?.procedural?.type === "path") {
+    const polyline = pathPolyline(world, pathNode);
+    const mid = polyline[Math.floor(polyline.length / 2)]!;
+    return { ...point(mid.x, mid.z), radius: pathWidth(pathNode) / 2, polyline, nodeId: target };
   }
 
   const node = lookup(target);

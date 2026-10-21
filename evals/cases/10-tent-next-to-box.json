@@ -1,0 +1,10 @@
+{
+  "name": "tent next to the red box",
+  "world": "default",
+  "command": "put a tent next to the red box",
+  "assert": [
+    { "check": "count", "tag": "tent", "equals": 1, "newOnly": true },
+    { "check": "near", "tag": "tent", "target": "box_1", "max": 4.5, "newOnly": true },
+    { "check": "dry" }
+  ]
+}

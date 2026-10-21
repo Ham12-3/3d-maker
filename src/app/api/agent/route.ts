@@ -1,8 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { AGENT_EFFORT, AGENT_MAX_TOKENS, AGENT_MODEL } from "@/agent/config";
-import { SYSTEM_PROMPT } from "@/agent/system-prompt";
-import { toolDefinitions } from "@/agent/tools";
+import { agentRequest } from "@/agent/request";
 import { clientKey, createRateLimiter } from "@/lib/rate-limit";
 
 /**
@@ -16,8 +14,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 400_000;
 const rateLimit = createRateLimiter(30, 60_000);
-// Built once: identical bytes every request keeps the prompt cache warm.
-const TOOLS = toolDefinitions();
 
 const BodySchema = z.object({
   messages: z
@@ -56,17 +52,7 @@ export async function POST(req: Request): Promise<Response> {
   client ??= new Anthropic();
   const started = Date.now();
   const stream = client.beta.messages.stream(
-    {
-      model: AGENT_MODEL,
-      max_tokens: AGENT_MAX_TOKENS,
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      tools: TOOLS,
-      messages: parsed.data.messages as Anthropic.Beta.BetaMessageParam[],
-      output_config: { effort: AGENT_EFFORT },
-      // Re-run on another model server-side if a safety classifier declines.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    },
+    agentRequest(parsed.data.messages as Anthropic.Beta.BetaMessageParam[]),
     { signal: req.signal },
   );
 

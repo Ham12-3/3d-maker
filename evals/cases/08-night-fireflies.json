@@ -1,0 +1,9 @@
+{
+  "name": "night and fireflies",
+  "world": "lake",
+  "command": "now make it night and add fireflies",
+  "assert": [
+    { "check": "env", "path": "timeOfDay", "between": [20, 4.5] },
+    { "check": "feature", "type": "fireflies" }
+  ]
+}

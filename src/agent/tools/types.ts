@@ -1,5 +1,6 @@
 import type { Draft } from "immer";
 import type { z } from "zod";
+import type { AssetCandidate, AssetSearch } from "@/assets/types";
 import type { CameraMove } from "@/render/camera/shots";
 import type { CameraState, Vec3, World } from "@/scene/schema";
 
@@ -19,6 +20,12 @@ export type ToolContext = {
   seed: number;
   moveCamera: (move: CameraMove) => void;
   say: (text: string) => void;
+  /** Tiered asset search (bundled kit, then Poly Pizza). Mocked in tests/evals. */
+  searchAssets: AssetSearch;
+  /** Wider search for the search_assets tool (both tiers). */
+  searchAllAssets: AssetSearch;
+  /** Candidates seen this turn, keyed "source:id", so add_objects can use asset_id. */
+  candidates: Map<string, AssetCandidate>;
 };
 
 export type ToolOutcome =
@@ -32,7 +39,7 @@ export type AgentTool<S extends z.ZodType = z.ZodType> = {
   eagerInputStreaming?: boolean;
   /** Short present-tense label for the activity line, e.g. "Adding objects". */
   pending: string;
-  execute: (input: z.infer<S>, ctx: ToolContext) => ToolOutcome;
+  execute: (input: z.infer<S>, ctx: ToolContext) => ToolOutcome | Promise<ToolOutcome>;
 };
 
 export function defineTool<S extends z.ZodType>(tool: AgentTool<S>): AgentTool<S> {

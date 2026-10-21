@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { computeShot } from "@/render/camera/shots";
+import { computeShot, fogVisibility } from "@/render/camera/shots";
 import { focusFor } from "./common";
 import { defineTool, fail } from "./types";
 
@@ -13,7 +13,7 @@ const input = z.object({
     .string()
     .optional()
     .describe(
-      "Node id, region id, 'pointer' or 'origin'. Defaults to the selection, else the whole scene.",
+      "Node id, region id, 'pointer', 'origin' or 'scene'. Defaults to the selection, else the whole scene.",
     ),
   duration_seconds: z.number().min(0.5).max(30).optional(),
 });
@@ -28,7 +28,15 @@ export const setCameraTool = defineTool({
   execute({ shot, target, duration_seconds }, ctx) {
     const focus = focusFor(target, ctx);
     if (typeof focus === "string") return fail(focus);
-    ctx.moveCamera(computeShot(shot, focus, ctx.camera, duration_seconds));
+    ctx.moveCamera(
+      computeShot(
+        shot,
+        focus,
+        ctx.camera,
+        duration_seconds,
+        fogVisibility(ctx.getWorld().environment.fog),
+      ),
+    );
     return {
       ok: true,
       activity: `Camera: ${shot.replace("_", " ")}`,

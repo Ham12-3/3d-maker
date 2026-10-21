@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { followMovedAnchors, nodeSize, solvePlacements } from "@/layout/solver";
 import { MaterialSchema, RelationSchema, Vec3Schema, type Vec3 } from "@/scene/schema";
-import { getHeightField } from "@/scene/terrain";
+import { getWorldHeightField } from "@/scene/terrain";
 import { SelectorFields, SizeSchema, resolveSelector } from "./common";
 import { defineTool, fail, fmt } from "./types";
 
@@ -82,7 +82,7 @@ export const updateObjectsTool = defineTool({
     let followed: string[] = [];
 
     ctx.edit(`Update ${sel.ids.join(", ")}`, (draft) => {
-      const heightAt = getHeightField(draft.environment.terrain);
+      const heightAt = getWorldHeightField(draft);
       for (const id of sel.ids) {
         const node = draft.nodes[id]!;
         const t = node.transform;

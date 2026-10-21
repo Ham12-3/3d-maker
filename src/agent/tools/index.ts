@@ -1,8 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { addObjectsTool } from "./add-objects";
+import { addProceduralTool } from "./add-procedural";
+import { createRegionTool } from "./create-region";
 import { removeObjectsTool } from "./remove-objects";
 import { sayTool } from "./say";
+import { searchAssetsTool } from "./search-assets";
 import { setCameraTool } from "./set-camera";
 import { setEnvironmentTool } from "./set-environment";
 import type { AgentTool, ToolContext } from "./types";
@@ -11,9 +14,12 @@ import { updateObjectsTool } from "./update-objects";
 /** Fixed order: the tool list is part of the cached prompt prefix. */
 export const TOOLS: readonly AgentTool[] = [
   setEnvironmentTool,
+  addProceduralTool,
   addObjectsTool,
   updateObjectsTool,
   removeObjectsTool,
+  createRegionTool,
+  searchAssetsTool,
   setCameraTool,
   sayTool,
 ] as AgentTool[];
@@ -43,7 +49,11 @@ export function toolDefinitions(): Anthropic.Beta.BetaTool[] {
 export type ToolCallResult = { isError: boolean; content: string; activity: string };
 
 /** Validate raw (possibly partial-JSON-parsed) input against the schema, then run the tool. */
-export function executeToolCall(name: string, rawInput: unknown, ctx: ToolContext): ToolCallResult {
+export async function executeToolCall(
+  name: string,
+  rawInput: unknown,
+  ctx: ToolContext,
+): Promise<ToolCallResult> {
   const tool = getTool(name);
   if (!tool) return { isError: true, content: `Unknown tool "${name}"`, activity: "" };
 
@@ -56,7 +66,7 @@ export function executeToolCall(name: string, rawInput: unknown, ctx: ToolContex
     };
   }
   try {
-    const outcome = tool.execute(parsed.data, ctx);
+    const outcome = await tool.execute(parsed.data, ctx);
     return outcome.ok
       ? { isError: false, content: outcome.result, activity: outcome.activity }
       : { isError: true, content: outcome.error, activity: "" };

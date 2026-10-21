@@ -31,11 +31,20 @@ export type Focus = {
 
 const DEG = Math.PI / 180;
 
+/**
+ * How far you can see through exp2 fog before things are more than half
+ * fogged out. Shots never pull back further than this.
+ */
+export function fogVisibility(fog: { enabled: boolean; density: number }): number {
+  return fog.enabled && fog.density > 0 ? 0.85 / fog.density : Infinity;
+}
+
 export function computeShot(
   kind: ShotKind,
   focus: Focus,
   camera: CameraState,
   duration?: number,
+  maxDistance = Infinity,
 ): CameraMove {
   const [fx, fy, fz] = focus.center;
   // Keep the viewer on the side they're already looking from.
@@ -49,13 +58,18 @@ export function computeShot(
   ];
 
   switch (kind) {
-    case "establishing":
+    case "establishing": {
+      const ideal = Math.max(28, focus.radius * 2.5);
+      const distance = Math.max(12, Math.min(ideal, maxDistance));
+      // When fog keeps us close, look down more steeply to still take it all in.
+      const elevation = distance < ideal ? 48 * DEG : 32 * DEG;
       return {
         kind: "tween",
-        position: from(Math.max(28, focus.radius * 3.2), 32 * DEG),
+        position: from(distance, elevation),
         target: lookAt,
         duration: duration ?? 2.2,
       };
+    }
     case "close_up":
       return {
         kind: "tween",

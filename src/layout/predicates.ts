@@ -1,5 +1,6 @@
 import type { Rng } from "@/lib/random";
 import type { Region, Relation } from "@/scene/schema";
+import { distanceToPolyline, pointAlong } from "./paths";
 import {
   regionDistance,
   regionEdgePoint,
@@ -26,7 +27,60 @@ export type Anchor = {
   top: number;
   region?: Region;
   nodeId?: string;
+  /** Paths: the centreline. `radius` is then the half width. */
+  polyline?: Point2[];
 };
+
+const POLYLINE_PREDICATES: ReadonlySet<Relation["predicate"]> = new Set([
+  "near",
+  "next_to",
+  "along_edge_of",
+  "around",
+]);
+
+/** Desired gap (beyond the path edge and the item's own radius) per predicate. */
+function polylineGap(rel: Relation): number {
+  if (rel.predicate === "near" || rel.predicate === "around") return (rel.distance ?? 2) * 0.6;
+  return rel.distance ?? DEFAULT_NEXT_TO_GAP;
+}
+
+function polylineCandidates(
+  rel: Relation,
+  anchor: Anchor,
+  item: ItemShape,
+  rng: Rng,
+  group: Group,
+): Point2[] {
+  const points = anchor.polyline!;
+  const offset = anchor.radius + item.radius + polylineGap(rel);
+  const out: Point2[] = [];
+  const push = (t: number, side: number) => {
+    const { p, normal } = pointAlong(points, t);
+    out.push({ x: p.x + normal.x * offset * side, z: p.z + normal.z * offset * side });
+  };
+  if (group.size > 1) {
+    // Evenly spaced along the path, alternating sides.
+    const slot = (group.index + 0.5) / group.size;
+    const side = group.index % 2 === 0 ? 1 : -1;
+    for (let i = 0; i < 6; i++)
+      push(slot + (rng() - 0.5) * (0.3 / group.size), i < 4 ? side : -side);
+  } else {
+    for (let i = 0; i < 12; i++) {
+      push((i + 0.5) / 12, 1);
+      push((i + 0.5) / 12, -1);
+    }
+  }
+  return out;
+}
+
+function polylineScore(rel: Relation, anchor: Anchor, item: ItemShape, p: Point2): number {
+  const gap = distanceToPolyline(anchor.polyline!, p) - anchor.radius - item.radius;
+  if (gap < -0.05) return -1;
+  const target = polylineGap(rel);
+  if (rel.predicate === "near" || rel.predicate === "around")
+    return gap <= target * 1.5 ? 1 : 1 - (gap - target) / (target + 1);
+  return 1 - Math.abs(gap - target) / 2;
+}
 
 export type ItemShape = { radius: number; halfX: number; halfZ: number };
 
@@ -61,6 +115,9 @@ export function candidates(
   rng: Rng,
   group: Group,
 ): Point2[] {
+  if (anchor.polyline && POLYLINE_PREDICATES.has(rel.predicate)) {
+    return polylineCandidates(rel, anchor, item, rng, group);
+  }
   const out: Point2[] = [];
   const ring = (radius: number, count: number, phase = rng() * Math.PI * 2) => {
     for (let i = 0; i < count; i++) {
@@ -174,6 +231,9 @@ export function candidates(
 
 /** How well point p satisfies a relation: 1 is perfect, below 0.5 counts as unsatisfied. */
 export function score(rel: Relation, anchor: Anchor, item: ItemShape, axes: ViewAxes, p: Point2) {
+  if (anchor.polyline && POLYLINE_PREDICATES.has(rel.predicate)) {
+    return polylineScore(rel, anchor, item, p);
+  }
   const dx = p.x - anchor.center.x;
   const dz = p.z - anchor.center.z;
   const dist = Math.hypot(dx, dz);

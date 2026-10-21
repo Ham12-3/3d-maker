@@ -1,3 +1,5 @@
+import { searchAllAssets, searchAssets } from "@/assets/search";
+import { useAssetStatus } from "@/assets/status";
 import { useDirector } from "@/render/camera/director";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
@@ -26,6 +28,9 @@ export async function runCommand(command: string): Promise<void> {
     context: { selection: selectedId, pointer, camera: useDirector.getState().live },
     moveCamera: (move) => useDirector.getState().play(move),
     say: (say) => useAgentStatus.setState({ say }),
+    searchAssets,
+    searchAllAssets,
+    brokenAssets: () => useAssetStatus.getState().broken,
     onActivity: (activity) => useAgentStatus.setState({ activity }),
     signal: abort.signal,
   });

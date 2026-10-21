@@ -1,0 +1,9 @@
+{
+  "name": "foggy sunset",
+  "world": "default",
+  "command": "make it a foggy sunset",
+  "assert": [
+    { "check": "env", "path": "timeOfDay", "between": [17, 19.2] },
+    { "check": "env", "path": "fog.enabled", "equals": true }
+  ]
+}

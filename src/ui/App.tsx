@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { sceneStore } from "@/scene/store";
 import { CommandBar } from "./CommandBar";
+import { Credits } from "./Credits";
+import { DevOverlay } from "./DevOverlay";
 import { DevPanel } from "./DevPanel";
 import { Toolbar } from "./Toolbar";
 import { useShortcuts } from "./useShortcuts";
@@ -28,7 +30,13 @@ export function App() {
       <Stage />
       <Toolbar />
       <CommandBar />
-      {process.env.NODE_ENV === "development" && <DevPanel />}
+      {process.env.NODE_ENV === "development" && (
+        <>
+          <DevPanel />
+          <DevOverlay />
+        </>
+      )}
+      <Credits />
     </main>
   );
 }

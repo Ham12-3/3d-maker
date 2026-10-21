@@ -1,0 +1,10 @@
+{
+  "name": "put a bench there (pointer)",
+  "world": "default",
+  "pointer": [8, 0, 6],
+  "command": "put a bench there",
+  "assert": [
+    { "check": "count", "tag": "bench", "equals": 1, "newOnly": true },
+    { "check": "near", "tag": "bench", "target": "8,6", "max": 3, "newOnly": true }
+  ]
+}

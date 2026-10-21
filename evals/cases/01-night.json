@@ -1,0 +1,9 @@
+{
+  "name": "make it night",
+  "world": "default",
+  "command": "make it night",
+  "assert": [
+    { "check": "env", "path": "timeOfDay", "between": [20, 4.5] },
+    { "check": "env", "path": "stars", "equals": true }
+  ]
+}

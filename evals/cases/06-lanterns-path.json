@@ -1,0 +1,9 @@
+{
+  "name": "five lanterns along the path",
+  "world": "lake",
+  "command": "put five lanterns along the path",
+  "assert": [
+    { "check": "count", "tag": "lantern", "equals": 5, "newOnly": true },
+    { "check": "alongPath", "tag": "lantern", "path": "path_1", "maxGap": 1.5 }
+  ]
+}

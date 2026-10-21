@@ -3,7 +3,7 @@ import { nodeSize } from "@/layout/solver";
 import { regionRadius } from "@/layout/regions";
 import type { Focus } from "@/render/camera/shots";
 import type { World } from "@/scene/schema";
-import { getHeightField } from "@/scene/terrain";
+import { getWorldHeightField } from "@/scene/terrain";
 import type { ToolContext } from "./types";
 
 export const SizeSchema = z
@@ -37,8 +37,8 @@ export function resolveSelector(world: World, sel: { ids?: string[]; tag?: strin
 /** What a camera shot should look at: a node, region, the pointer, or the whole scene. */
 export function focusFor(target: string | undefined, ctx: ToolContext): Focus | string {
   const world = ctx.getWorld();
-  const heightAt = getHeightField(world.environment.terrain);
-  const id = target ?? ctx.selection ?? undefined;
+  const heightAt = getWorldHeightField(world);
+  const id = target === "scene" ? undefined : (target ?? ctx.selection ?? undefined);
 
   if (id === "pointer" || id === "there") {
     const p = ctx.pointer ?? ctx.camera.target;
@@ -66,16 +66,26 @@ export function focusFor(target: string | undefined, ctx: ToolContext): Focus | 
     if (target) return `Unknown camera target "${target}"`;
   }
 
-  // Whole scene: bounding circle of all nodes (or the build area if empty).
+  // Whole scene: bounding circle of every node's extent (a forest ring is
+  // 80 m across even though its centre is one point).
   const nodes = Object.values(world.nodes);
   if (nodes.length === 0) return { center: [0, 0, 0], radius: 12, height: 3 };
-  const xs = nodes.map((n) => n.transform.position[0]);
-  const zs = nodes.map((n) => n.transform.position[2]);
+  const half = (n: (typeof nodes)[number]) => Math.max(nodeSize(n)[0], nodeSize(n)[2]) / 2;
+  const xs = nodes.flatMap((n) => [
+    n.transform.position[0] - half(n),
+    n.transform.position[0] + half(n),
+  ]);
+  const zs = nodes.flatMap((n) => [
+    n.transform.position[2] - half(n),
+    n.transform.position[2] + half(n),
+  ]);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
   const radius = Math.max(
-    ...nodes.map((n) => Math.hypot(n.transform.position[0] - cx, n.transform.position[2] - cz)),
+    ...nodes.map(
+      (n) => Math.hypot(n.transform.position[0] - cx, n.transform.position[2] - cz) + half(n),
+    ),
   );
   const height = Math.max(...nodes.map((n) => nodeSize(n)[1]));
-  return { center: [cx, heightAt(cx, cz), cz], radius: Math.max(radius, 4), height };
+  return { center: [cx, heightAt(cx, cz), cz], radius: Math.min(Math.max(radius, 4), 60), height };
 }

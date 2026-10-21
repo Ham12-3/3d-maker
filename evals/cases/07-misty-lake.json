@@ -1,0 +1,14 @@
+{
+  "name": "misty lake scene (Phase 2 acceptance)",
+  "world": "empty",
+  "command": "a misty lake surrounded by pine trees with a cabin on the shore",
+  "assert": [
+    { "check": "feature", "type": "lake" },
+    { "check": "feature", "type": "forest", "aroundOf": "lake" },
+    { "check": "count", "tag": "cabin", "equals": 1, "newOnly": true },
+    { "check": "near", "tag": "cabin", "target": "lake", "max": 25 },
+    { "check": "env", "path": "fog.enabled", "equals": true },
+    { "check": "dry" },
+    { "check": "judgeClean" }
+  ]
+}
