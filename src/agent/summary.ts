@@ -11,6 +11,8 @@ export type SummaryContext = {
   selection: string | null;
   pointer: Vec3 | null;
   camera: CameraState;
+  /** Width/height of the view; not part of the summary text. */
+  aspect?: number;
 };
 
 const GROUP_THRESHOLD = 60;

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { BufferGeometry, Float32BufferAttribute } from "three";
 import { regionEdgePoint } from "@/layout/regions";
 import type { Region } from "@/scene/schema";
-import { useScene } from "@/scene/store";
+import { sceneStore, useScene } from "@/scene/store";
 import { getWorldHeightField } from "@/scene/terrain";
 
 const FLASH_MS = 4000;
@@ -21,8 +21,11 @@ export function RegionFlash() {
 
   useEffect(() => {
     const ids = Object.keys(regions);
-    // Regions that exist at load aren't news.
-    if (seen.current === null) {
+    // Regions that exist at load aren't news. A loaded world (startup, share
+    // link, import) has no history at all; an edit always has some.
+    const { past, future, transaction } = sceneStore.getState();
+    const loaded = past.length === 0 && future.length === 0 && transaction === null;
+    if (seen.current === null || loaded) {
       seen.current = new Set(ids);
       return;
     }

@@ -1,6 +1,7 @@
 import { searchAllAssets, searchAssets } from "@/assets/search";
 import { useAssetStatus } from "@/assets/status";
 import { useDirector } from "@/render/camera/director";
+import { recordAndDownload } from "@/render/camera/recording";
 import { captureView } from "@/render/capture";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
@@ -50,8 +51,18 @@ export async function runCommand(command: string, opts: RunOptions = {}): Promis
   const result = await runAgentTurn(text, {
     request: requestAgent,
     store: sceneStore,
-    context: { selection: selectedId, pointer, camera: useDirector.getState().live },
-    moveCamera: (move) => useDirector.getState().play(move),
+    context: {
+      selection: selectedId,
+      pointer,
+      camera: useDirector.getState().live,
+      aspect: viewAspect(),
+    },
+    moveCamera: (move, { record } = {}) => {
+      if (!record) return useDirector.getState().play(move);
+      recordAndDownload(move).catch((err: Error) =>
+        useAgentStatus.setState({ error: `Recording failed: ${err.message}` }),
+      );
+    },
     say: (say) => useAgentStatus.setState({ say }),
     searchAssets,
     searchAllAssets,
@@ -139,6 +150,14 @@ export function polishPrompt(request: string | null): string {
     "Make at most 3 concrete improvements with tools (update_objects, add/remove, set_environment, set_camera). Don't rebuild the scene.",
     "If it already looks right, change nothing. Finish with say: what you improved, in one short sentence.",
   ].join(" ");
+}
+
+/** Width/height of the 3D frame (9:16 in Director's reel frame). */
+function viewAspect(): number {
+  const el = document.querySelector<HTMLElement>("[data-stage-frame]");
+  const w = el?.clientWidth || window.innerWidth;
+  const h = el?.clientHeight || window.innerHeight;
+  return h > 0 ? w / h : 16 / 9;
 }
 
 export function cancelCommand(): void {

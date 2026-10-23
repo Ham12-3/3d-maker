@@ -7,6 +7,7 @@ import { useInteraction } from "@/scene/interaction";
 import type { SceneNode } from "@/scene/schema";
 import { useScene } from "@/scene/store";
 import { waterKey } from "@/scene/terrain";
+import { EXPORT_ROOT } from "./exporter";
 import { Ghosts } from "./Ghosts";
 import { AssetModel } from "./nodes/AssetModel";
 import { Fireflies } from "./nodes/Fireflies";
@@ -32,15 +33,18 @@ export function World() {
   return (
     <>
       <SkySystem env={env} />
-      <Terrain terrain={env.terrain} waterKey={water} />
-      <Sea terrain={env.terrain} />
       <Weather weather={env.weather} />
       <PointerMarker />
       <Ghosts />
       <RegionFlash />
-      {nodeIds.map((id) => (
-        <NodeView key={id} id={id} />
-      ))}
+      {/* Everything that is part of the world itself (what Export GLB saves). */}
+      <group name={EXPORT_ROOT}>
+        <Terrain terrain={env.terrain} waterKey={water} />
+        <Sea terrain={env.terrain} />
+        {nodeIds.map((id) => (
+          <NodeView key={id} id={id} />
+        ))}
+      </group>
     </>
   );
 }

@@ -17,7 +17,7 @@ node scripts/curate-kenney.mjs <dir>   # rebuild public/assets/kenney from extra
 
 Before calling a phase done: `pnpm typecheck && pnpm lint && pnpm test` must all pass.
 
-`.env.local` needs `ANTHROPIC_API_KEY` for the agent (without it `/api/agent` returns a clear 500), `POLYPIZZA_API_KEY` for online models (without it objects fall back to primitives) and optionally `OPENAI_API_KEY` for the default speech engine (without it voice uses the browser's speech recognition).
+`.env.local` needs `ANTHROPIC_API_KEY` for the agent (without it `/api/agent` returns a clear 500), `POLYPIZZA_API_KEY` for online models (without it objects fall back to primitives) optionally `OPENAI_API_KEY` for the default speech engine (without it voice uses the browser's speech recognition), and `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for share links (without them, development saves shared worlds to `.data/`; production answers 503).
 
 ## Layout
 
@@ -28,13 +28,16 @@ src/
     api/assets/search/    Poly Pizza search proxy (cached a day)
     api/assets/file/[id]/ Poly Pizza GLB proxy (key stays on the server)
     api/stt/token/        OpenAI speech: GET availability, POST mints a 10-minute client secret
+    api/worlds/           POST saves a world for sharing; [id] GET loads, PUT updates (edit token); [id]/thumbnail (dev file store only)
+    w/[id]/               read-only share page (Viewer) with Open Graph thumbnail
   agent/          config, system prompt, request builder, summary, client loop, judge, status, macros, tools/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
   layout/         Solver, predicates, regions, spatial hash, scatter (instanced nature), paths
   scene/          World schema, default world, store, ops, terrain (height field + lake/river carving, water queries)
-  render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, nodes/ (Primitive, AssetModel, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/
-  ui/             CommandBar, Toolbar, TopBar (Polish + Credits), Credits, DevPanel, DevOverlay, shortcuts
+  render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, exporter, nodes/ (Primitive, AssetModel, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/ (shots, director store, CameraRig, recording, RecordFrames)
+  share/          Share ids/tokens, WorldRepo (Supabase REST or dev file store), save/update, server loader, browser client
+  ui/             CommandBar, Toolbar, TopBar (Polish, Director, Share, Credits), DirectorPanel, ShareMenu, StageFrame, Viewer, Credits, DevPanel, DevOverlay, shortcuts
   voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
   lib/            seeded RNG, simplex noise, rate limiter, TTL cache
 evals/            cases/*.json, checks, base worlds, run.test.ts, results/
@@ -42,7 +45,7 @@ public/assets/kenney/   curated CC0 GLBs + manifest.json (sizes in metres)
 scripts/          curate-kenney.mjs
 ```
 
-Planned (not built yet): local Whisper engine (optional), persistence.
+Planned (not built yet): local Whisper engine (optional), autosave of the editor's own world.
 
 ## Architecture rules
 
@@ -75,6 +78,14 @@ Planned (not built yet): local Whisper engine (optional), persistence.
 - **Visual critique:** `render/capture.tsx#CaptureBridge` registers `captureView()` (renders the current frame, downscales to 1024 px wide, JPEG 0.82). `capture_view` returns it to Claude as an image tool result. The **Polish** button (`agent/run-command.ts#runPolish`) captures the view and runs a Sonnet turn with `polishPrompt(lastRequest)` plus the image; Polish is its own undo step. **Auto** (TopBar checkbox, `status.autoPolish`) polishes after any turn with 3+ tool calls.
 - **Macros** (`agent/macros.ts`): `executeToolCall` records every successful creating call (`set_environment`, `add_procedural`, `add_objects`, `create_region`) with the ids it created into `ctx.recorder`. `save_macro` generalises the current turn's steps, or the previous turn's (`previousTurn` in `run-command.ts`): created ids become `$placeholders`, absolute positions are dropped, and references to things outside the recipe become `$anchor`. `apply_macro` assigns fresh ids, binds `$anchor` to a target (node, region, "pointer"), and replays the steps through `executeToolCall`, so the solver re-places everything. Saved macros live in `world.macros` (undoable, in the summary as `MACROS:`). Built-ins: spooky, cosy_village, tropical_island, winter_wonderland, alien_planet.
 - **Regions by voice:** "call this area X" → `create_region` at the pointer. `RegionFlash` outlines a new region and shows its name for 4 s.
+
+## Share, export, Director
+
+- **Supabase project `speakworld`** (eu-west-2, ref `unqecdchprblgxhgyxve`): table `public.worlds` (id, title, world jsonb, thumbnail_url, edit_token_hash, timestamps) with RLS on and no policies, and a public `thumbnails` bucket (JPEG only, 1 MB). Only the Next.js server talks to it, over plain REST (`share/supabase-repo.ts`, no client library) with the secret key; the browser never gets a Supabase key.
+- **Sharing:** Share → `shareWorld()` saves the world with the live camera and a 1.9:1 thumbnail (`captureView({ aspect })`). The first save returns an edit token, kept in localStorage; sharing again PUTs to the same id (token checked by hash, timing-safe). Without the token (someone else's world) it creates a new link. `/w/<id>` validates the stored JSON with `WorldSchema`, loads it into the store before the Stage mounts, and offers Director and Remix (`/?w=<id>` opens it in the editor).
+- **Export:** GLB via `GLTFExporter` of the `world-export` group (terrain, water, nodes, instanced nature as `EXT_mesh_gpu_instancing`); sky, weather, helpers, points and shader materials are hidden for the export, and generated DataTextures (water ripples) are stripped and restored. JSON export/import of the world itself.
+- **Director:** shots are pure maths in `render/camera/shots.ts`: establishing, close_up, orbit, flyover (a sweeping pass across the front that keeps the subject in frame), first_person, reveal (crane up and back), push_in. `aspect` makes shots stand further back in a 9:16 frame; `cut` moves start on their first frame (recordings). The Director panel frames the view 9:16 (`StageFrame`, same element tree so the Canvas never remounts) and previews or records a shot of the selection or the whole scene.
+- **Recording** (`render/camera/recording.ts`): the canvas renders at the video height (`recording.dpr`), `RecordFrames` renders each frame itself (useFrame priority 1) and copies it into an exact 1080x1920 (or 720x1280) 2D canvas, whose `captureStream(30)` goes to MediaRecorder (MP4/H.264 where supported, else WebM). Real time: a slow GPU gives a choppier video, so 720p is offered. "Record a slow flyover" works by voice: `set_camera` with `record: true`.
 
 ## Assets
 
@@ -147,7 +158,9 @@ Planned (not built yet): local Whisper engine (optional), persistence.
 
 - pnpm reports "Ignored build scripts: unrs-resolver". It ships prebuilt binaries, so lint works without approving it.
 - `next/font/google` fetches Inter at build time; offline builds fall back to system fonts.
-- Rate limiters and asset caches are per server instance (fine for dev; revisit for Vercel in Phase 7).
+- Rate limiters and asset caches are per server instance (fine for dev; revisit for Vercel in Phase 7). Saves are limited to 10/min per IP.
+- Thumbnails can't be larger than the canvas, so in a small window the link preview is under 1200 px wide.
+- Shared worlds can't be deleted from the app yet.
 - Stars mount/unmount rather than fade.
 - The island sea is only rendered; the solver and judge don't treat it as water (the island shore keeps most placements dry anyway).
 - Frame rate measured in a hidden/background browser pane is throttled and meaningless; check fps with the page visible.

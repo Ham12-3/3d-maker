@@ -34,7 +34,7 @@ export type AgentDeps = {
   routing?: "routed" | ProfileName;
   store: StoreApi<SceneStore>;
   context: SummaryContext;
-  moveCamera: (move: CameraMove) => void;
+  moveCamera: (move: CameraMove, opts?: { record?: boolean }) => void;
   say: (text: string) => void;
   searchAssets: AssetSearch;
   searchAllAssets: AssetSearch;
@@ -95,6 +95,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
     selection: deps.context.selection,
     pointer: deps.context.pointer,
     camera: deps.context.camera,
+    viewAspect: deps.context.aspect,
     seed: deps.seed ?? Math.floor(Math.random() * 2 ** 31),
     moveCamera: deps.moveCamera,
     say: deps.say,
@@ -261,6 +262,7 @@ export async function runAgentTurn(command: string, deps: AgentDeps): Promise<Tu
             ctx.camera,
             undefined,
             fogVisibility(ctx.getWorld().environment.fog),
+            ctx.viewAspect,
           ),
         );
     }

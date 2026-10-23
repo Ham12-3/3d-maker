@@ -11,11 +11,17 @@ import type { ToolImage } from "@/agent/tools/types";
  * without preserveDrawingBuffer (and even when the tab is in the background).
  */
 
-const MAX_WIDTH = 1024;
-let capture: (() => ToolImage) | null = null;
+export type CaptureOptions = {
+  /** Output width cap in pixels (default 1024). */
+  maxWidth?: number;
+  /** Crop the centre of the view to this width/height ratio (e.g. 1200/630 for link previews). */
+  aspect?: number;
+};
 
-export async function captureView(): Promise<ToolImage | null> {
-  return capture ? capture() : null;
+let capture: ((opts: CaptureOptions) => ToolImage) | null = null;
+
+export async function captureView(opts: CaptureOptions = {}): Promise<ToolImage | null> {
+  return capture ? capture(opts) : null;
 }
 
 export function CaptureBridge() {
@@ -24,14 +30,33 @@ export function CaptureBridge() {
   const camera = useThree((s) => s.camera);
 
   useEffect(() => {
-    capture = () => {
+    capture = ({ maxWidth = 1024, aspect }) => {
       gl.render(scene, camera);
       const src = gl.domElement;
-      const k = Math.min(1, MAX_WIDTH / src.width);
+      // Source rectangle: the whole frame, or its centre cropped to `aspect`.
+      let sw = src.width;
+      let sh = src.height;
+      if (aspect) {
+        if (sw / sh > aspect) sw = Math.round(sh * aspect);
+        else sh = Math.round(sw / aspect);
+      }
+      const k = Math.min(1, maxWidth / sw);
       const out = document.createElement("canvas");
-      out.width = Math.round(src.width * k);
-      out.height = Math.round(src.height * k);
-      out.getContext("2d")!.drawImage(src, 0, 0, out.width, out.height);
+      out.width = Math.round(sw * k);
+      out.height = Math.round(sh * k);
+      out
+        .getContext("2d")!
+        .drawImage(
+          src,
+          (src.width - sw) / 2,
+          (src.height - sh) / 2,
+          sw,
+          sh,
+          0,
+          0,
+          out.width,
+          out.height,
+        );
       const data = out.toDataURL("image/jpeg", 0.82).split(",")[1]!;
       return { mediaType: "image/jpeg", data, width: out.width, height: out.height };
     };

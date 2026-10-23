@@ -18,7 +18,10 @@ export type ToolContext = {
   camera: CameraState;
   /** Seed for this turn, so placements are reproducible. */
   seed: number;
-  moveCamera: (move: CameraMove) => void;
+  /** Play a camera move; `record` also records it as a vertical video. */
+  moveCamera: (move: CameraMove, opts?: { record?: boolean }) => void;
+  /** Width/height of the view (shots stand further back in narrow frames). */
+  viewAspect?: number;
   say: (text: string) => void;
   /** Tiered asset search (bundled kit, then Poly Pizza). Mocked in tests/evals. */
   searchAssets: AssetSearch;

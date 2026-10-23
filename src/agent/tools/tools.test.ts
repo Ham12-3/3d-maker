@@ -9,6 +9,7 @@ import type { ToolContext } from "./types";
 function setup(selection: string | null = null) {
   const store = createSceneStore(loadDefaultWorld());
   const moves: CameraMove[] = [];
+  const recorded: CameraMove[] = [];
   const said: string[] = [];
   const ctx: ToolContext = {
     getWorld: () => store.getState().world,
@@ -17,13 +18,13 @@ function setup(selection: string | null = null) {
     pointer: null,
     camera: store.getState().world.camera,
     seed: 1,
-    moveCamera: (m) => moves.push(m),
+    moveCamera: (m, opts) => (opts?.record ? recorded : moves).push(m),
     say: (t) => said.push(t),
     searchAssets: mockSearchAssets,
     searchAllAssets: mockSearchAllAssets,
     candidates: new Map(),
   };
-  return { store, ctx, moves, said, world: () => store.getState().world };
+  return { store, ctx, moves, recorded, said, world: () => store.getState().world };
 }
 
 describe("tool definitions", () => {
@@ -207,6 +208,18 @@ describe("tools", () => {
     ).toBe(true);
     await executeToolCall("say", { text: "Done. Want fireflies too?" }, ctx);
     expect(said).toEqual(["Done. Want fireflies too?"]);
+  });
+
+  it("set_camera can record a cinematic shot", async () => {
+    const { ctx, moves, recorded } = setup();
+    const result = await executeToolCall(
+      "set_camera",
+      { shot: "reveal", target: "pillar_1", record: true },
+      ctx,
+    );
+    expect(result.isError).toBe(false);
+    expect(moves).toHaveLength(0);
+    expect(recorded[0]?.kind).toBe("path");
   });
 
   it("returns a readable error for invalid input and unknown tools", async () => {

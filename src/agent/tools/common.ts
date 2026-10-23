@@ -35,7 +35,10 @@ export function resolveSelector(world: World, sel: { ids?: string[]; tag?: strin
 }
 
 /** What a camera shot should look at: a node, region, the pointer, or the whole scene. */
-export function focusFor(target: string | undefined, ctx: ToolContext): Focus | string {
+export function focusFor(
+  target: string | undefined,
+  ctx: Pick<ToolContext, "getWorld" | "selection" | "pointer" | "camera">,
+): Focus | string {
   const world = ctx.getWorld();
   const heightAt = getWorldHeightField(world);
   const id = target === "scene" ? undefined : (target ?? ctx.selection ?? undefined);

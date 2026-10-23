@@ -20,3 +20,6 @@ playwright-report/
 .DS_Store
 *.log
 .vercel
+
+# local share storage (dev fallback when Supabase keys are missing)
+.data/

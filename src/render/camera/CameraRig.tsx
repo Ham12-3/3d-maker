@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { CatmullRomCurve3, Vector3 } from "three";
 import type { Vec3 } from "@/scene/schema";
 import { useDirector } from "./director";
-import type { CameraMove } from "./shots";
+import { moveStart, type CameraMove } from "./shots";
 
 const ORBIT_LEAD_IN = 1.2;
 
@@ -59,6 +59,12 @@ export function CameraRig() {
 
   useEffect(() => {
     if (!move || !controls) return;
+    if (move.kind !== "tween" && move.cut) {
+      const start = moveStart(move);
+      camera.position.set(...start.position);
+      controls.target.set(...start.target);
+      controls.update();
+    }
     const p: Playing = {
       move,
       elapsed: 0,
@@ -66,12 +72,12 @@ export function CameraRig() {
       fromTarget: controls.target.clone(),
     };
     if (move.kind === "path") {
-      p.curve = new CatmullRomCurve3([
-        camera.position.clone(),
-        ...move.points.map((v) => new Vector3(...v)),
-      ]);
+      // A cut starts on the path itself; otherwise fly in from where we are.
+      const lead = move.cut ? [] : [camera.position.clone()];
+      const leadLook = move.cut ? [] : [controls.target.clone()];
+      p.curve = new CatmullRomCurve3([...lead, ...move.points.map((v) => new Vector3(...v))]);
       p.lookCurve = new CatmullRomCurve3([
-        controls.target.clone(),
+        ...leadLook,
         ...move.lookAt.map((v) => new Vector3(...v)),
       ]);
     }
@@ -99,12 +105,13 @@ export function CameraRig() {
           target.y + move.height,
           target.z + Math.cos(angle) * move.radius,
         );
-      if (p.elapsed < ORBIT_LEAD_IN) {
-        const k = easeInOutCubic(p.elapsed / ORBIT_LEAD_IN);
+      const leadIn = move.cut ? 0 : ORBIT_LEAD_IN;
+      if (p.elapsed < leadIn) {
+        const k = easeInOutCubic(p.elapsed / leadIn);
         camera.position.lerpVectors(p.fromPos, at(move.startAngle), k);
         controls.target.lerpVectors(p.fromTarget, target, k);
       } else {
-        const t = Math.min(1, (p.elapsed - ORBIT_LEAD_IN) / move.duration);
+        const t = Math.min(1, (p.elapsed - leadIn) / move.duration);
         camera.position.copy(at(move.startAngle + easeInOutSine(t) * move.turns * Math.PI * 2));
         controls.target.copy(target);
         done = t >= 1;
