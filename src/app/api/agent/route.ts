@@ -67,7 +67,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!process.env.ANTHROPIC_API_KEY) {
     return errorResponse(
       500,
-      "ANTHROPIC_API_KEY is not set. Add it to .env.local and restart the dev server.",
+      process.env.VERCEL
+        ? "ANTHROPIC_API_KEY is not set. Add it in the Vercel project's Environment Variables and redeploy."
+        : "ANTHROPIC_API_KEY is not set. Add it to .env.local and restart the dev server.",
     );
   }
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {

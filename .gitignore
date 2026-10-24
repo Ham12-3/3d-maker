@@ -23,3 +23,6 @@ playwright-report/
 
 # local share storage (dev fallback when Supabase keys are missing)
 .data/
+
+.vercel
+.env*
