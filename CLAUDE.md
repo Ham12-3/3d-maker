@@ -93,6 +93,12 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 - **Director:** shots are pure maths in `render/camera/shots.ts`: establishing, close_up, orbit, flyover (a sweeping pass across the front that keeps the subject in frame), first_person, reveal (crane up and back), push_in. `aspect` makes shots stand further back in a 9:16 frame, but never so far that the camera leaves the terrain (beyond it there is only sky); `cut` moves start on their first frame (recordings). The Director panel frames the view 9:16 (`StageFrame`, same element tree so the Canvas never remounts) and previews or records a shot of the selection or the whole scene.
 - **Recording** (`render/camera/recording.ts`): the canvas renders at the video height (`recording.dpr`), `RecordFrames` renders each frame itself (useFrame priority 1) and copies it into an exact 1080x1920 (or 720x1280) 2D canvas, whose `captureStream(30)` goes to MediaRecorder (MP4/H.264 where supported, else WebM). Real time: a slow GPU gives a choppier video, so 720p is offered. "Record a slow flyover" works by voice: `set_camera` with `record: true`.
 
+## Deployment
+
+- **Vercel project `speakworld`** (team ham12-3s-projects), live at https://speakworld-navy.vercel.app. It is connected to GitHub `Ham12-3/3d-maker`: every push to master deploys production, and other branches get previews. No database: on Vercel, sharing uses link-packed worlds.
+- Environment variables are set in the Vercel dashboard (`ANTHROPIC_API_KEY`, `POLYPIZZA_API_KEY`, optionally `OPENAI_API_KEY` and the `AGENT_*` limits); a redeploy picks up changes. `vercel link` also wrote `VERCEL_OIDC_TOKEN` into `.env.local` (git-ignored).
+- CI: the evals job needs the `ANTHROPIC_API_KEY` repository secret; without it, it skips with a notice.
+
 ## Assets
 
 - **Tiers:** bundled Kenney kit first (`assets/catalog.ts#searchKit`, instant, offline, CC0), then Poly Pizza via `/api/assets/search`. A kit model must match the query's head noun ("wooden cabin" never resolves to a fence). No match falls back to a primitive and the tool result says so.
