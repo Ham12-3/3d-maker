@@ -357,6 +357,15 @@ export async function requestAgent(messages: MessageParam[], { signal, profile }
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ messages, profile }),
     signal,
+  }).catch((err: Error) => {
+    if (err.name === "AbortError") throw err;
+    // The browser's own message ("Failed to fetch") doesn't say what's wrong.
+    const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+    throw new AgentError(
+      local
+        ? "Can't reach the Speakworld server. Is `pnpm dev` still running?"
+        : "Can't reach the Speakworld server. Check your connection and try again.",
+    );
   });
   if (!res.ok || !res.body) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
