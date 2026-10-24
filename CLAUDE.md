@@ -33,14 +33,14 @@ src/
     api/worlds/           POST saves a world for sharing; [id] GET loads, PUT updates (edit token); [id]/thumbnail (dev file store only)
     w/[id]/               read-only share page (Viewer) with Open Graph thumbnail
     v/                    read-only page for a world packed into the link (#world=...)
-  agent/          config, system prompt, request builder, summary, client loop, judge, status, macros, tools/
+  agent/          config, system prompt, request builder, summary, client loop, judge, status, conversation (chat history), macros, tools/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
   layout/         Solver, predicates, regions, spatial hash, scatter (instanced nature), paths
   scene/          World schema, default world, store, ops, terrain (height field + lake/river carving, water queries), parts (custom-object bounds)
   render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, exporter, nodes/ (Primitive, AssetModel, CustomObject, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/ (shots, director store, CameraRig, recording, RecordFrames)
   share/          Share ids/tokens, WorldRepo (Supabase REST or dev file store), save/update, server loader, browser client
-  ui/             CommandBar, Toolbar, TopBar (Polish, Director, Share, Credits), DirectorPanel, ShareMenu, StageFrame, Viewer, Credits, DevPanel, DevOverlay, shortcuts
+  ui/             AppHeader (top bar), ChatPanel + Composer (left), layout store, DirectorPanel, ShareMenu, StageFrame, Viewer, Credits, DevPanel, DevOverlay, shortcuts
   voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
   lib/            seeded RNG, simplex noise, rate limiter, TTL cache
 evals/            cases/*.json, checks, base worlds, run.test.ts, results/
@@ -172,7 +172,7 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 - **Kenney kits:** Nature, Holiday and Survival (CC0). The Holiday Kit's cabin is modular pieces, so cabins/houses come from Poly Pizza.
 - **Fog guidance:** densities are tuned to scene scale (0.012 misty); exp2 fog hides beyond ~0.85/density metres.
 - **Speech to text:** OpenAI `gpt-live-transcribe` (the docs' recommended streaming model) over WebRTC. No `audio.format` in the session (WebRTC negotiates it in SDP) and no `delay` (the docs conflict on support). Raw `fetch`, no OpenAI SDK dependency. The local Whisper engine (Transformers.js) is not built: optional in the brief, needs a new dependency and is slow on a CPU-only laptop.
-- **Styling:** Tailwind v4, `glass` utility for overlays.
+- **Styling:** Tailwind v4. The editor follows Lovable's layout: a top bar (chat toggle, logo, rename-able world title, undo/redo; Polish, Director, Credits and a gradient Share on the right), the chat on the left (340 px, 400 px on wide screens; Ctrl/Cmd+B hides it, phones start with it closed) and the 3D preview framed on the right. Tokens in `globals.css`: `--color-shell`/`panel`/`raised`, `brand-gradient`, `popover` (solid dropdowns), `glass` (overlays on the 3D view). The chat history (`agent/conversation.ts`) is display only: each reply lists finished tool actions (from `onToolResult`), a live spinner line (from `onActivity`) and the `say` text.
 - **Dev affordances:** `window.__scene` and `window.__interaction` expose the stores; DevPanel (top right) for manual edits; DevOverlay (top left) shows fps, draw calls, triangles, DPR and the last command's timings. drei `PerformanceMonitor` lowers DPR (0.75-1.75) when frame rate drops.
 
 ## Known issues

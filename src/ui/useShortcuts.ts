@@ -4,14 +4,23 @@ import { useEffect } from "react";
 import { useInteraction } from "@/scene/interaction";
 import { removeNodes } from "@/scene/ops";
 import { sceneStore } from "@/scene/store";
+import { useLayout } from "./layout";
 
-/** Global keys: Ctrl/Cmd+Z undo, Shift+Ctrl/Cmd+Z or Ctrl+Y redo, Delete removes selection. */
+/**
+ * Global keys: Ctrl/Cmd+Z undo, Shift+Ctrl/Cmd+Z or Ctrl+Y redo, Ctrl/Cmd+B
+ * shows or hides the chat, Delete removes the selection.
+ */
 export function useShortcuts() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTyping(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      if (mod && key === "b") {
+        e.preventDefault();
+        useLayout.getState().toggleChat();
+        return;
+      }
+      if (isTyping(e.target)) return;
       const store = sceneStore.getState();
 
       if (mod && key === "z") {

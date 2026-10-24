@@ -6,6 +6,7 @@ import { useDirector } from "@/render/camera/director";
 import type { World } from "@/scene/schema";
 import { sceneStore } from "@/scene/store";
 import { Credits } from "./Credits";
+import { HeaderButton } from "./AppHeader";
 import { DirectorPanel, RecordingBadge } from "./DirectorPanel";
 import { StageFrame } from "./StageFrame";
 
@@ -24,38 +25,48 @@ export function Viewer({ world, remixHref }: { world: World; remixHref: string }
   const recording = useDirector((s) => s.recording);
 
   return (
-    <main className="relative h-dvh w-full">
-      <StageFrame>
-        <Stage />
-      </StageFrame>
-      <div className="glass absolute top-4 left-4 px-4 py-2">
-        <div className="text-sm font-medium tracking-tight">{world.title}</div>
-        <div className="text-[11px] text-white/50">Built by voice with Speakworld</div>
-      </div>
-      <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
-        <div className="flex items-start gap-2">
-          <button
-            type="button"
-            onClick={() => setDirecting((d) => !d)}
-            aria-expanded={directing}
-            className={`glass px-3 py-1.5 text-xs ${directing ? "text-sky-200" : "text-white/80 hover:text-white"}`}
-          >
+    // Same chrome as the editor: top bar and a framed preview (no chat).
+    <main className="bg-shell flex h-dvh w-full flex-col">
+      <header className="relative z-30 flex h-12 shrink-0 items-center gap-2 px-3">
+        <span className="brand-gradient grid size-7 shrink-0 place-items-center rounded-lg text-sm font-bold text-white">
+          S
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-white/90">{world.title}</div>
+          <div className="truncate text-[11px] text-white/45">Built by voice with Speakworld</div>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          {recording && <RecordingBadge startedAt={recording.startedAt} />}
+          <HeaderButton active={directing} onClick={() => setDirecting((d) => !d)}>
             Director
-          </button>
+          </HeaderButton>
+          <Credits />
           <a
             href={remixHref}
-            className="glass px-3 py-1.5 text-xs text-white/80 hover:text-white"
             title="Open a copy in the editor and keep building"
+            className="brand-gradient rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_2px_12px_rgb(255_77_141/0.35)] hover:brightness-110"
           >
             Remix
           </a>
-          <Credits />
         </div>
-        {recording && <RecordingBadge startedAt={recording.startedAt} />}
-        {directing && <DirectorPanel onClose={() => setDirecting(false)} />}
-      </div>
-      <div className="glass pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1.5 text-[11px] text-white/55">
-        Drag to look around · scroll to zoom
+        {directing && (
+          <div className="absolute top-full right-3 mt-1">
+            <DirectorPanel onClose={() => setDirecting(false)} />
+          </div>
+        )}
+      </header>
+      <div className="min-h-0 flex-1 px-2 pb-2">
+        <section
+          aria-label="Preview"
+          className="relative h-full overflow-hidden rounded-xl border border-white/10 bg-[#0b0d12]"
+        >
+          <StageFrame>
+            <Stage />
+          </StageFrame>
+          <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1.5 text-[11px] text-white/60 backdrop-blur">
+            Drag to look around · scroll to zoom
+          </div>
+        </section>
       </div>
     </main>
   );

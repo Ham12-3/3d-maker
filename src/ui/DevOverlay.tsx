@@ -12,7 +12,7 @@ export function DevOverlay() {
   const colour = fps >= 55 ? "text-emerald-300" : fps >= 40 ? "text-amber-300" : "text-red-300";
 
   return (
-    <div className="glass pointer-events-none absolute top-16 left-4 px-3 py-2 font-mono text-[10px] leading-4 text-white/60">
+    <div className="glass pointer-events-none absolute top-3 left-3 px-3 py-2 font-mono text-[10px] leading-4 text-white/60">
       <div>
         <span className={colour}>{fps} fps</span> · {calls} calls · {(triangles / 1000).toFixed(0)}k
         tris · dpr {dpr.toFixed(2)}

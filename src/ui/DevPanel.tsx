@@ -30,7 +30,7 @@ export function DevPanel() {
   const endDrag = () => sceneStore.getState().commitTransaction();
 
   return (
-    <div className="glass absolute top-16 right-4 w-64 space-y-3 p-4 text-xs">
+    <div className="glass absolute top-3 right-3 w-64 space-y-3 p-4 text-xs">
       <div className="text-[10px] font-semibold tracking-widest text-white/50 uppercase">
         Dev panel
       </div>

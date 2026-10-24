@@ -15,17 +15,21 @@ export function Credits() {
   const credits = useMemo(() => JSON.parse(creditsKey) as Credit[], [creditsKey]);
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="glass px-3 py-1.5 text-xs text-white/80 transition hover:text-white"
+        className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+          open
+            ? "border-white/25 bg-white/[0.08] text-white"
+            : "border-white/10 text-white/80 hover:bg-white/[0.06] hover:text-white"
+        }`}
         aria-expanded={open}
       >
         Credits{credits.length ? ` (${credits.length + 1})` : ""}
       </button>
       {open && (
-        <div className="glass max-h-[60vh] w-80 space-y-3 overflow-y-auto p-4 text-xs leading-relaxed">
+        <div className="popover absolute top-full right-0 z-30 mt-2 max-h-[60vh] w-80 space-y-3 overflow-y-auto p-4 text-xs leading-relaxed">
           <div>
             <div className="font-medium text-white/90">Kenney asset kits</div>
             <div className="text-white/60">

@@ -2,6 +2,24 @@
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* Editor chrome (chat panel + top bar), in the style of Lovable's editor. */
+  --color-shell: #111113;
+  --color-panel: #1a1a1d;
+  --color-raised: #232327;
+}
+
+/* The brand gradient: logo mark and the primary (Share) button. */
+@utility brand-gradient {
+  background-image: linear-gradient(135deg, #ff7a45 0%, #ff4d8d 48%, #7b61ff 100%);
+}
+
+/* Solid dropdown surface for menus under the top bar. */
+@utility popover {
+  background-color: var(--color-panel);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 0.875rem;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+  color: rgb(255 255 255 / 0.9);
 }
 
 /* Dark glass surface used by every overlay. */
@@ -29,6 +47,6 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #0b0d12;
+  background: var(--color-shell);
   color: #fff;
 }

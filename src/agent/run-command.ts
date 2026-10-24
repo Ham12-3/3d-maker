@@ -6,6 +6,7 @@ import { captureView } from "@/render/capture";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
 import { ROUTING, type ProfileName } from "./config";
+import { useConversation } from "./conversation";
 import { requestAgent, runAgentTurn } from "./loop";
 import { useAgentStatus } from "./status";
 import type { RecordedStep, ToolImage } from "./tools/types";
@@ -38,6 +39,11 @@ export async function runCommand(command: string, opts: RunOptions = {}): Promis
   const shown = opts.label ?? text;
 
   const abort = new AbortController();
+  const chat = useConversation.getState();
+  const reply = chat.start(shown, {
+    ...(opts.speechEndedAt !== undefined ? { voice: true } : {}),
+    ...(opts.polish ? { polish: true } : {}),
+  });
   useAgentStatus.setState({
     running: true,
     command: shown,
@@ -60,16 +66,26 @@ export async function runCommand(command: string, opts: RunOptions = {}): Promis
     moveCamera: (move, { record } = {}) => {
       if (!record) return useDirector.getState().play(move);
       recordAndDownload(move).catch((err: Error) =>
-        useAgentStatus.setState({ error: `Recording failed: ${err.message}` }),
+        useConversation.getState().note(`Recording failed: ${err.message}`),
       );
     },
-    say: (say) => useAgentStatus.setState({ say }),
+    say: (say) => {
+      useAgentStatus.setState({ say });
+      chat.say(reply, say);
+    },
     searchAssets,
     searchAllAssets,
     brokenAssets: () => useAssetStatus.getState().broken,
     previousTurn,
     captureView,
-    onActivity: (activity) => useAgentStatus.setState({ activity }),
+    onActivity: (activity) => {
+      useAgentStatus.setState({ activity });
+      chat.phase(reply, activity);
+    },
+    // Finished actions become the reply's steps (say is shown as its text).
+    onToolResult: (name, result) => {
+      if (!result.isError && name !== "say" && result.activity) chat.step(reply, result.activity);
+    },
     signal: abort.signal,
     ...(opts.images ? { images: opts.images } : {}),
     ...(opts.routing ? { routing: opts.routing } : {}),
@@ -83,6 +99,12 @@ export async function runCommand(command: string, opts: RunOptions = {}): Promis
       result.error ?? "",
     );
   }
+  chat.finish(reply, {
+    status: result.status,
+    ...(result.error ? { error: result.error } : {}),
+    ...(result.model ? { model: result.model.replace(/^claude-/, "") } : {}),
+    seconds: result.totalMs / 1000,
+  });
   if (result.status === "done") {
     // A ground click is a one-shot "there": don't let it leak into the next command.
     useInteraction.getState().setPointer(null);

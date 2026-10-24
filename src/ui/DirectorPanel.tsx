@@ -48,7 +48,7 @@ export function DirectorPanel({ onClose }: { onClose: () => void }) {
   if (recording) return null;
 
   return (
-    <div className="glass w-64 space-y-3 p-3 text-xs">
+    <div className="popover w-64 space-y-3 p-3 text-xs">
       <div className="flex items-center justify-between">
         <span className="font-medium text-white/90">Director</span>
         <button type="button" onClick={onClose} className="text-white/50 hover:text-white">
