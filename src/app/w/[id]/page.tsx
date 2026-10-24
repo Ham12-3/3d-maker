@@ -26,5 +26,5 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function SharedWorldPage({ params }: Props) {
   const shared = await loadSharedWorld((await params).id);
   if (!shared) notFound();
-  return <Viewer id={shared.id} world={shared.world} />;
+  return <Viewer world={shared.world} remixHref={`/?w=${shared.id}`} />;
 }

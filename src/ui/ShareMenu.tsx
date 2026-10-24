@@ -10,7 +10,7 @@ import { shareWorld, unlinkShare, useShare } from "@/share/client";
 
 /** Share a read-only link, export GLB / JSON, or import a JSON world. */
 export function ShareMenu({ onClose }: { onClose: () => void }) {
-  const { url, saving, error } = useShare();
+  const { url, kind, saving, error } = useShare();
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -99,6 +99,7 @@ export function ShareMenu({ onClose }: { onClose: () => void }) {
           </div>
           <div className="text-white/45">
             {copied ? "Copied. " : ""}Anyone with the link can view (read-only).
+            {kind === "link" && " The world is packed into the link itself."}
           </div>
         </div>
       )}

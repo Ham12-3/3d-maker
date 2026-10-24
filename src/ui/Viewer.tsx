@@ -18,7 +18,7 @@ const Stage = dynamic(() => import("@/render/Stage"), {
  * Read-only view of a shared world: look around, record a reel, or remix it
  * in the editor. No command bar, no agent.
  */
-export function Viewer({ id, world }: { id: string; world: World }) {
+export function Viewer({ world, remixHref }: { world: World; remixHref: string }) {
   useLoadWorld(world);
   const [directing, setDirecting] = useState(false);
   const recording = useDirector((s) => s.recording);
@@ -43,7 +43,7 @@ export function Viewer({ id, world }: { id: string; world: World }) {
             Director
           </button>
           <a
-            href={`/?w=${id}`}
+            href={remixHref}
             className="glass px-3 py-1.5 text-xs text-white/80 hover:text-white"
             title="Open a copy in the editor and keep building"
           >

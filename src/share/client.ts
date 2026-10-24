@@ -5,11 +5,14 @@ import { captureView } from "@/render/capture";
 import { useDirector } from "@/render/camera/director";
 import { WorldSchema, type World } from "@/scene/schema";
 import { sceneStore } from "@/scene/store";
+import { encodeWorld, HASH_KEY, MAX_LINK_CHARS } from "./link";
 
 /**
  * Browser side of sharing. The first share creates a link and keeps its edit
  * token in localStorage; sharing again updates the same link. Opening someone
  * else's world and sharing it creates a new link (a remix).
+ * When the server has no storage (a deployment without a database), the
+ * world is packed into the link itself instead (`share/link.ts`).
  */
 
 const TOKENS_KEY = "speakworld:edit-tokens";
@@ -20,6 +23,8 @@ type ShareState = {
   /** The share id the current world is linked to, if any. */
   id: string | null;
   url: string | null;
+  /** "stored": saved on the server; "link": the world travels in the URL. */
+  kind: "stored" | "link" | null;
   saving: boolean;
   error: string | null;
 };
@@ -27,6 +32,7 @@ type ShareState = {
 export const useShare = create<ShareState>()(() => ({
   id: null,
   url: null,
+  kind: null,
   saving: false,
   error: null,
 }));
@@ -39,6 +45,11 @@ export async function shareWorld(): Promise<string> {
   try {
     // Open the link from the view the user is looking at now.
     const world: World = { ...sceneStore.getState().world, camera: useDirector.getState().live };
+    if (!(await serverStorage())) {
+      const url = await linkFor(world);
+      useShare.setState({ id: null, url, kind: "link", saving: false });
+      return url;
+    }
     const thumbnail = (await captureView(THUMB))?.data;
     const body = JSON.stringify({ world, thumbnail });
     const { id } = useShare.getState();
@@ -68,7 +79,7 @@ export async function shareWorld(): Promise<string> {
     if (!res.ok || !json.id) throw new Error(json.error ?? `Save failed (${res.status})`);
     if (json.editToken) writeToken(json.id, json.editToken);
     const url = `${location.origin}/w/${json.id}`;
-    useShare.setState({ id: json.id, url, saving: false });
+    useShare.setState({ id: json.id, url, kind: "stored", saving: false });
     return url;
   } catch (err) {
     useShare.setState({ saving: false, error: (err as Error).message });
@@ -84,12 +95,13 @@ export async function fetchSharedWorld(id: string): Promise<LoadedWorld> {
 }
 
 /** Put a loaded world in the editor and fly the camera to its saved view. */
-export function openInEditor(loaded: LoadedWorld): void {
+export function openInEditor(loaded: Pick<LoadedWorld, "world"> & { id?: string }): void {
   sceneStore.getState().replaceWorld(loaded.world);
-  const owned = Boolean(readTokens()[loaded.id]);
+  const owned = Boolean(loaded.id && readTokens()[loaded.id]);
   useShare.setState({
-    id: owned ? loaded.id : null,
+    id: owned ? loaded.id! : null,
     url: owned ? `${location.origin}/w/${loaded.id}` : null,
+    kind: owned ? "stored" : null,
     error: null,
   });
   const { position, target } = loaded.world.camera;
@@ -98,7 +110,27 @@ export function openInEditor(loaded: LoadedWorld): void {
 
 /** Called after replacing the world from elsewhere (import, new): forget the link. */
 export function unlinkShare(): void {
-  useShare.setState({ id: null, url: null, error: null });
+  useShare.setState({ id: null, url: null, kind: null, error: null });
+}
+
+/** A link with the world packed into its #fragment. */
+export async function linkFor(world: World, path = "/v"): Promise<string> {
+  const encoded = await encodeWorld(world);
+  if (encoded.length > MAX_LINK_CHARS) {
+    throw new Error("This world is too big for a link. Use Export JSON to share it.");
+  }
+  return `${location.origin}${path}#${HASH_KEY}${encoded}`;
+}
+
+let storage: Promise<boolean> | null = null;
+
+/** Whether the server can store shared worlds (asked once per page load). */
+function serverStorage(): Promise<boolean> {
+  storage ??= fetch("/api/worlds")
+    .then((r) => (r.ok ? (r.json() as Promise<{ available?: boolean }>) : null))
+    .then((j) => j?.available === true)
+    .catch(() => false);
+  return storage;
 }
 
 function readTokens(): Record<string, string> {

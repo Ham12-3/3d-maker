@@ -9,10 +9,12 @@ pnpm dev          # Next.js dev server on http://localhost:3000
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # eslint (flat config)
 pnpm test         # vitest run (unit tests; evals are skipped)
-pnpm evals        # real Claude eval suite (~$0.09 a run), writes evals/results/<timestamp>.json
+pnpm evals        # real Claude eval suite (a few cents a run), writes evals/results/<timestamp>.json
+pnpm test:e2e     # Playwright smoke test against `pnpm start` (run `pnpm build` first); Claude is mocked
 pnpm format       # prettier --write
 pnpm build        # production build
 node scripts/curate-kenney.mjs <dir>   # rebuild public/assets/kenney from extracted Kenney zips
+node scripts/record-demo.mjs <url> <dir> # record the README demo video (real Claude), then ffmpeg it to docs/demo.gif
 ```
 
 Before calling a phase done: `pnpm typecheck && pnpm lint && pnpm test` must all pass.
@@ -30,6 +32,7 @@ src/
     api/stt/token/        OpenAI speech: GET availability, POST mints a 10-minute client secret
     api/worlds/           POST saves a world for sharing; [id] GET loads, PUT updates (edit token); [id]/thumbnail (dev file store only)
     w/[id]/               read-only share page (Viewer) with Open Graph thumbnail
+    v/                    read-only page for a world packed into the link (#world=...)
   agent/          config, system prompt, request builder, summary, client loop, judge, status, macros, tools/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
@@ -41,6 +44,8 @@ src/
   voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
   lib/            seeded RNG, simplex noise, rate limiter, TTL cache
 evals/            cases/*.json, checks, base worlds, run.test.ts, results/
+e2e/              Playwright smoke test (smoke.spec.ts)
+.github/workflows/ci.yml   checks + build + smoke test on every push/PR; evals on master pushes when the ANTHROPIC_API_KEY secret is set
 public/assets/kenney/   curated CC0 GLBs + manifest.json (sizes in metres)
 scripts/          curate-kenney.mjs
 ```
@@ -82,6 +87,7 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 ## Share, export, Director
 
 - **Supabase project `speakworld`** (eu-west-2, ref `unqecdchprblgxhgyxve`): table `public.worlds` (id, title, world jsonb, thumbnail_url, edit_token_hash, timestamps) with RLS on and no policies, and a public `thumbnails` bucket (JPEG only, 1 MB). Only the Next.js server talks to it, over plain REST (`share/supabase-repo.ts`, no client library) with the secret key; the browser never gets a Supabase key.
+- **No database needed:** `GET /api/worlds` says whether the server can store worlds. If not (Vercel without Supabase), `shareWorld()` packs the world into the link instead: deflate-raw + base64url in `/v#world=...` (`share/link.ts`, capped at 60k characters). The fragment never reaches the server; Remix opens it as `/#world=...`.
 - **Sharing:** Share → `shareWorld()` saves the world with the live camera and a 1.9:1 thumbnail (`captureView({ aspect })`). The first save returns an edit token, kept in localStorage; sharing again PUTs to the same id (token checked by hash, timing-safe). Without the token (someone else's world) it creates a new link. `/w/<id>` validates the stored JSON with `WorldSchema`, loads it into the store before the Stage mounts, and offers Director and Remix (`/?w=<id>` opens it in the editor).
 - **Export:** GLB via `GLTFExporter` of the `world-export` group (terrain, water, nodes, instanced nature as `EXT_mesh_gpu_instancing`); sky, weather, helpers, points and shader materials are hidden for the export, and generated DataTextures (water ripples) are stripped and restored. JSON export/import of the world itself.
 - **Director:** shots are pure maths in `render/camera/shots.ts`: establishing, close_up, orbit, flyover (a sweeping pass across the front that keeps the subject in frame), first_person, reveal (crane up and back), push_in. `aspect` makes shots stand further back in a 9:16 frame, but never so far that the camera leaves the terrain (beyond it there is only sky); `cut` moves start on their first frame (recordings). The Director panel frames the view 9:16 (`StageFrame`, same element tree so the Canvas never remounts) and previews or records a shot of the selection or the whole scene.
@@ -136,6 +142,7 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 
   Earlier single-profile runs (10 simple cases): Haiku 1.23 s to first change vs Sonnet 1.85 s; Sonnet with `between_tools` was slower (2.34 s), so it is not used.
 
+- Phase 7 run (same 15 cases, after the share/Director tools changed): 15/15, valid tool calls 97%, first visible p50 1.5 s, total p50 1.7 s, 2 escalations, $0.023.
 - Phase 5 run (15 cases, adds "save this village, make another by the river", winter wonderland, naming a region; cases may have `setup` commands that run first, chained via `previousTurn`): 15/15, valid tool calls 97%, first visible p50 1.2 s, total p50 2.1 s, 2 escalations, $0.045.
 - `pnpm test` skips evals; vitest `--mode evals` (or `EVALS=1`) enables them.
 
@@ -158,7 +165,8 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 
 - pnpm reports "Ignored build scripts: unrs-resolver". It ships prebuilt binaries, so lint works without approving it.
 - `next/font/google` fetches Inter at build time; offline builds fall back to system fonts.
-- Rate limiters and asset caches are per server instance (fine for dev; revisit for Vercel in Phase 7). Saves are limited to 10/min per IP.
+- Rate limiters and asset caches are per server instance (no shared store). `/api/agent` has three layers: 30/min and `AGENT_DAILY_LIMIT_PER_IP` (300)/day per IP, plus `AGENT_HOURLY_LIMIT` (2000)/hour across everyone on the instance; `AGENT_DISABLED=1` switches it off. Saves are limited to 10/min per IP. Set a spend limit in the Anthropic console too.
+- Link-packed shares have no preview image (the server never sees the world).
 - Thumbnails can't be larger than the canvas, so in a small window the link preview is under 1200 px wide.
 - Shared worlds can't be deleted from the app yet.
 - Stars mount/unmount rather than fade.

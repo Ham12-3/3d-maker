@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useInteraction } from "@/scene/interaction";
 import { sceneStore } from "@/scene/store";
 import { fetchSharedWorld, openInEditor } from "@/share/client";
+import { decodeWorld, worldFromHash } from "@/share/link";
 import { useVoice } from "@/voice/useVoice";
 import { CommandBar } from "./CommandBar";
 import { TopBar } from "./TopBar";
@@ -30,13 +31,22 @@ export function App() {
     }
   }, []);
 
-  // "Remix" from a share page opens /?w=<id>: load that world to edit.
+  // "Remix" from a share page opens /?w=<id> (stored) or /#world=... (in
+  // the link): load that world to edit.
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("w");
-    if (!id) return;
-    fetchSharedWorld(id)
-      .then(openInEditor)
-      .catch((err: Error) => console.warn(`[share] could not open ${id}: ${err.message}`));
+    const packed = worldFromHash(location.hash);
+    const load = id
+      ? fetchSharedWorld(id)
+      : packed
+        ? decodeWorld(packed).then((world) => ({ world }))
+        : null;
+    load
+      ?.then((loaded) => {
+        openInEditor(loaded);
+        if (packed) history.replaceState(null, "", "/");
+      })
+      .catch((err: Error) => console.warn(`[share] could not open the world: ${err.message}`));
   }, []);
 
   return (

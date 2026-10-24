@@ -6,10 +6,16 @@ import { readSaveBody, saveError, saveRateLimit } from "./body";
 /**
  * POST /api/worlds  { world, thumbnail? } -> { id, editToken, url }
  * Saves a world for a read-only share link. Keep the editToken to update it.
+ * GET /api/worlds -> { available } whether this server can store worlds
+ * (without storage the browser packs the world into the link instead).
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export function GET(): Response {
+  return Response.json({ available: getRepo() !== null });
+}
 
 export async function POST(req: Request): Promise<Response> {
   const limited = saveRateLimit(clientKey(req));

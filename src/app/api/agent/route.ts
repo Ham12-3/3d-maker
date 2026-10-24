@@ -14,7 +14,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 400_000;
-const rateLimit = createRateLimiter(30, 60_000);
+const HOUR = 3_600_000;
+
+/**
+ * Layered limits protect the API bill on a public deployment: bursts and a
+ * daily allowance per visitor (IP), plus an hourly cap across everyone this
+ * instance serves. All are per server instance (no shared store); env vars
+ * tune them, and AGENT_DISABLED=1 switches the agent off entirely.
+ */
+const limits = [
+  { limit: createRateLimiter(30, 60_000), key: clientKey, message: "slow down a little" },
+  {
+    limit: createRateLimiter(envNumber("AGENT_DAILY_LIMIT_PER_IP", 300), 24 * HOUR),
+    key: clientKey,
+    message: "that's today's allowance for this demo",
+  },
+  {
+    limit: createRateLimiter(envNumber("AGENT_HOURLY_LIMIT", 2000), HOUR),
+    key: () => "everyone",
+    message: "the demo is very busy right now",
+  },
+];
 
 const BodySchema = z.object({
   messages: z
@@ -33,11 +53,16 @@ const BodySchema = z.object({
 let client: Anthropic | null = null;
 
 export async function POST(req: Request): Promise<Response> {
-  const limited = rateLimit(clientKey(req));
-  if (!limited.ok) {
-    return errorResponse(429, "Too many commands, slow down a little.", {
-      "retry-after": String(limited.retryAfterSeconds),
-    });
+  if (process.env.AGENT_DISABLED === "1") {
+    return errorResponse(503, "The agent is switched off on this deployment.");
+  }
+  for (const { limit, key, message } of limits) {
+    const limited = limit(key(req));
+    if (!limited.ok) {
+      return errorResponse(429, `Too many commands: ${message}.`, {
+        "retry-after": String(limited.retryAfterSeconds),
+      });
+    }
   }
   if (!process.env.ANTHROPIC_API_KEY) {
     return errorResponse(
@@ -87,6 +112,11 @@ export async function POST(req: Request): Promise<Response> {
       "x-accel-buffering": "no",
     },
   });
+}
+
+function envNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function errorResponse(
