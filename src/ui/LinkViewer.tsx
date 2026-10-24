@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { World } from "@/scene/schema";
 import { decodeWorld, HASH_KEY, worldFromHash } from "@/share/link";
@@ -13,13 +14,13 @@ export function LinkViewer() {
 
   useEffect(() => {
     const packed = worldFromHash(location.hash);
-    if (!packed) {
-      setState({ error: "This link has no world in it." });
-      return;
-    }
-    decodeWorld(packed)
-      .then((world) => setState({ world, packed }))
-      .catch(() => setState({ error: "This link is damaged or incomplete." }));
+    (packed ? decodeWorld(packed) : Promise.reject(new Error("no world")))
+      .then((world) => setState({ world, packed: packed! }))
+      .catch(() =>
+        setState({
+          error: packed ? "This link is damaged or incomplete." : "This link has no world in it.",
+        }),
+      );
   }, []);
 
   if (state && "world" in state) {
@@ -30,9 +31,9 @@ export function LinkViewer() {
       {state ? (
         <div className="space-y-2 text-center">
           <div>{state.error}</div>
-          <a href="/" className="text-sky-300 hover:underline">
+          <Link href="/" className="text-sky-300 hover:underline">
             Open Speakworld
-          </a>
+          </Link>
         </div>
       ) : (
         "Opening world..."
