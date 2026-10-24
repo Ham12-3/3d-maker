@@ -9,7 +9,7 @@ _Real run, 1.5x speed. Commands are typed here; holding Space and speaking runs 
 ## What it does
 
 - **Build by voice or text.** "Put a bench there" (click the ground first), "make this bigger", "remove all the trees", "make it a winter wonderland".
-- **Real models.** It uses a bundled Kenney kit (CC0) first, then searches Poly Pizza for anything else, with attribution in Credits. Forests, rocks, grass and flowers are procedural and instanced, so hundreds of trees stay fast.
+- **Real models, or designs anything else.** It uses a bundled Kenney kit (CC0) first, then searches Poly Pizza, with attribution in Credits. For anything the libraries lack (a lighthouse, a rocket, a windmill, a robot), Claude designs the object itself from three.js shapes, with exact colours, so it can make almost anything. "A yellow tent" tints the model; "make the nose cone blue" recolours one part. Forests, rocks, grass and flowers are procedural and instanced, so hundreds of trees stay fast.
 - **Sensible layout.** Claude describes _relations_ ("near the lake, facing the well"), never coordinates. A deterministic solver turns them into positions on the terrain, out of the water and off the paths.
 - **It checks its own work.** After every command a judge fixes floating, buried, overlapping or drowned objects. **Polish** sends Claude a screenshot to critique and fix.
 - **Recipes.** "Save this as my camp", then "add my camp by the river". There are five built-in recipes: spooky, cosy village, tropical island, winter wonderland and alien planet.
@@ -43,7 +43,7 @@ flowchart LR
 ```
 
 1. **The scene graph is the source of truth.** A world is plain JSON (`src/scene/schema.ts`, one zod schema that also generates Claude's tool schemas). Rendering is a pure function of it. Every change is an Immer patch, so undo, redo and rolling back a cancelled command are cheap.
-2. **Claude only ever calls typed tools**, such as `set_environment`, `add_objects`, `add_procedural`, `update_objects`, `create_region`, `apply_macro`, `capture_view`, `set_camera` and `say`. Each input is validated before it runs; errors go back to Claude as tool results, and it corrects itself.
+2. **Claude only ever calls typed tools**, such as `set_environment`, `add_objects`, `add_procedural`, `update_objects`, `create_region`, `apply_macro`, `capture_view`, `set_camera` and `say`. To make something with no ready model, `add_objects` takes a design: a list of parts (box, cylinder, cone, lathe profiles, extruded outlines, tubes...) with positions, angles, sizes and colours, which the renderer builds with three.js. Each input is validated before it runs; errors go back to Claude as tool results, and it corrects itself.
 3. **The loop runs in the browser.** The server route only holds the API key, adds the cached system prompt and tools, rate-limits, and streams events back. Each tool runs the moment its block finishes streaming, and partial tool input already shows ghost placeholders and starts the sky changing. Across eval runs, the median time to the first visible change is 1.2 to 1.5 s.
 4. **Haiku first, Sonnet when it matters.** Haiku 5.5 handles most commands. For multi-part compositions or whole-scene restyles it calls `escalate`, the turn rolls back, and Sonnet 5.5 reruns it. In the evals this escalated exactly the hard cases and halved the cost.
 5. **Coordinates come from a solver, not the model.** `src/layout/solver.ts` is pure and seeded. It scores candidate spots against every relation and penalises overlap (spatial hash), water, paths and leaving the world. It snaps to the same height field the terrain mesh uses.
@@ -51,11 +51,11 @@ flowchart LR
 
 ## Evals
 
-`pnpm evals` runs 15 real commands against Claude, with the exact request the app sends. Each case checks the resulting world declaratively ("a cabin within 20 m of the lake, and nothing in the water"). CI fails below an 85% pass rate.
+`pnpm evals` runs 17 real commands against Claude, with the exact request the app sends. Each case checks the resulting world declaratively ("a cabin within 20 m of the lake, and nothing in the water"). CI fails below an 85% pass rate.
 
 | Run                          | Pass  | First change visible (p50) | Whole command (p50) | Cost per run |
 | ---------------------------- | ----- | -------------------------- | ------------------- | ------------ |
-| Haiku first, Sonnet escalate | 15/15 | 1.5 s                      | 1.7 s               | $0.023       |
+| Haiku first, Sonnet escalate | 17/17 | 1.4 s                      | 2.1 s               | $0.072       |
 
 ## Running it
 

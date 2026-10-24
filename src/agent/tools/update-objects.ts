@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { followMovedAnchors, nodeSize, solvePlacements } from "@/layout/solver";
-import { MaterialSchema, RelationSchema, Vec3Schema, type Vec3 } from "@/scene/schema";
+import { partsFrame } from "@/scene/parts";
+import { MaterialSchema, PartSchema, RelationSchema, Vec3Schema, type Vec3 } from "@/scene/schema";
 import { getWorldHeightField } from "@/scene/terrain";
 import { SelectorFields, SizeSchema, resolveSelector } from "./common";
 import { defineTool, fail, fmt } from "./types";
@@ -30,7 +31,17 @@ const input = z.object({
       .max(20)
       .optional()
       .describe("Multiply size, e.g. 1.5 = 50% bigger"),
-    material: MaterialSchema.optional().describe("Merged into the current material"),
+    material: MaterialSchema.optional().describe(
+      "Merged into the current material. On models and custom objects, color tints the whole object",
+    ),
+    parts: z
+      .array(PartSchema)
+      .min(1)
+      .max(40)
+      .optional()
+      .describe(
+        "Custom objects only: the complete redesigned parts list (e.g. to recolour just the roof, send all parts with the roof changed). Keeps the object's height.",
+      ),
     name: z.string().min(1).max(60).optional(),
     add_tags: z.array(z.string()).max(8).optional(),
     remove_tags: z.array(z.string()).max(8).optional(),
@@ -118,6 +129,13 @@ export const updateObjectsTool = defineTool({
           t.scale = next;
         }
         if (changes.material) node.material = { ...node.material, ...changes.material };
+        if (changes.parts && node.kind === "group") {
+          // Same height as before, new proportions from the new design.
+          const natural = partsFrame(changes.parts).size;
+          const k = t.scale[1] / natural[1];
+          node.parts = changes.parts;
+          t.scale = natural.map((v) => +(v * k).toFixed(2)) as Vec3;
+        }
         if (changes.name) node.name = changes.name;
         if (changes.add_tags || changes.remove_tags) {
           const tags = new Set([...node.tags, ...(changes.add_tags ?? [])]);

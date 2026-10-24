@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "date": "2026-10-24T11:52:58.158Z",
+    "profile": "routed",
+    "cases": 2,
+    "passRate": 1,
+    "validToolCallRate": 1,
+    "avgToolCalls": 2,
+    "medianTotalMs": 8248,
+    "medianFirstChangeMs": 8178,
+    "medianFirstVisibleMs": 8178,
+    "escalations": 0,
+    "totalCostUsd": 0.0032767800000000004,
+    "models": ["claude-haiku-5-5"]
+  },
+  "rows": [
+    {
+      "case": "red and white lighthouse (designed object)",
+      "pass": true,
+      "checks": "ok custom: lighthouse_1: 9 parts | ok near: dist 13.9 | ok dry: dry",
+      "toolCalls": 2,
+      "validToolCalls": 2,
+      "iterations": 1,
+      "firstChangeMs": 8178.3747,
+      "firstVisibleMs": 8178.429400000001,
+      "escalated": null,
+      "totalMs": 8248,
+      "inputTokens": 443,
+      "cacheRead": 0,
+      "cacheWrite": 13068,
+      "outputTokens": 1507,
+      "costUsd": 0.0024313000000000004,
+      "models": "claude-haiku-5-5"
+    },
+    {
+      "case": "rocket ship there (designed object at the pointer)",
+      "pass": true,
+      "checks": "ok custom: rocket_1: 8 parts | ok near: dist 0.0",
+      "toolCalls": 2,
+      "validToolCalls": 2,
+      "iterations": 1,
+      "firstChangeMs": 6211.042999999998,
+      "firstVisibleMs": 6211.046899999998,
+      "escalated": null,
+      "totalMs": 6430,
+      "inputTokens": 523,
+      "cacheRead": 13068,
+      "cacheWrite": 0,
+      "outputTokens": 1325,
+      "costUsd": 0.00084548,
+      "models": "claude-haiku-5-5"
+    }
+  ]
+}

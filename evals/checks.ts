@@ -21,6 +21,7 @@ export type Check =
   | { check: "dry" }
   | { check: "nearWater"; tag: string; max: number; newOnly?: boolean }
   | { check: "region"; id: string }
+  | { check: "custom"; tag: string; minParts: number; colors?: string[] }
   | { check: "judgeClean" };
 
 export type CheckResult = { pass: boolean; detail: string };
@@ -170,12 +171,46 @@ export function runCheck(check: Check, before: World, after: World): CheckResult
           : `regions: ${Object.keys(after.regions).join(",") || "none"}`,
       };
     }
+    case "custom": {
+      // A designed object: enough parts, and (optionally) the colours asked for.
+      const hits = nodes.filter((x) => matches(x, check.tag) && isNew(x));
+      const designed = hits.filter((x) => (x.parts?.length ?? 0) >= check.minParts);
+      if (designed.length === 0) {
+        return {
+          pass: false,
+          detail: hits.length
+            ? `${hits.map((x) => `${x.id} ${x.kind} ${x.parts?.length ?? 0} parts`).join(", ")}`
+            : `no ${check.tag}`,
+        };
+      }
+      const colours = designed.flatMap((x) => x.parts!.map((p) => p.color ?? ""));
+      const missing = (check.colors ?? []).filter((c) => !colours.some((h) => hueOf(h) === c));
+      return {
+        pass: missing.length === 0,
+        detail: `${designed[0]!.id}: ${designed[0]!.parts!.length} parts${missing.length ? `, missing ${missing.join(",")}` : ""}`,
+      };
+    }
     case "judgeClean": {
       const report = judgeWorld(after, new Set(Object.keys(after.nodes)));
       const problems = [...report.fixed, ...report.hard].map((i) => i.detail);
       return { pass: problems.length === 0, detail: problems.join("; ") || "clean" };
     }
   }
+}
+
+/** Rough colour name of a #rrggbb hex, for checks like "has something red". */
+function hueOf(hex: string): string {
+  const m = hex.match(/^#(..)(..)(..)$/);
+  if (!m) return "";
+  const [r, g, b] = m.slice(1).map((h) => parseInt(h, 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max > 0.75 && max - min < 0.2) return "white";
+  if (max < 0.2) return "black";
+  if (max - min < 0.12) return "grey";
+  if (r === max) return g > 0.6 * r && b < 0.5 * r ? "yellow" : "red";
+  if (g === max) return "green";
+  return "blue";
 }
 
 function centreOf(world: World, ref: string): { x: number; z: number } | null {

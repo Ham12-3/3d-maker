@@ -222,6 +222,74 @@ describe("tools", () => {
     expect(recorded[0]?.kind).toBe("path");
   });
 
+  it("add_objects designs a custom object from parts, and update_objects redesigns it", async () => {
+    const { ctx, world } = setup();
+    const parts = [
+      { shape: "cylinder", position: [0, 4, 0], size: [2, 8, 2], taper: 0.8, color: "#ffffff" },
+      {
+        shape: "cylinder",
+        position: [0, 8.5, 0],
+        size: [1.6, 1, 1.6],
+        color: "#ffd84a",
+        emissive: true,
+      },
+      { shape: "cone", position: [0, 9.5, 0], size: [2, 1, 2], color: "#c0392b" },
+    ];
+    const added = await executeToolCall(
+      "add_objects",
+      {
+        objects: [
+          {
+            id: "lighthouse_1",
+            name: "lighthouse",
+            parts,
+            relations: [{ predicate: "near", target: "box_1", distance: 3 }],
+          },
+        ],
+      },
+      ctx,
+    );
+    expect(added.isError).toBe(false);
+    const node = world().nodes.lighthouse_1!;
+    expect(node.kind).toBe("group");
+    expect(node.parts).toHaveLength(3);
+    // Natural size: 10 m tall, 2 m wide; standing on the ground near the box.
+    expect(node.transform.scale).toEqual([2, 10, 2]);
+    expect(node.tags).toContain("custom");
+
+    // A requested size scales the design uniformly to fit.
+    await executeToolCall(
+      "add_objects",
+      { objects: [{ id: "small_1", name: "small lighthouse", parts, size: [4, 5, 4] }] },
+      ctx,
+    );
+    expect(world().nodes.small_1!.transform.scale).toEqual([1, 5, 1]);
+
+    // A redesign keeps the height and takes the new proportions.
+    const wider = parts.map((p) => ({ ...p, size: [p.size[0]! * 2, p.size[1]!, p.size[2]! * 2] }));
+    await executeToolCall(
+      "update_objects",
+      { ids: ["lighthouse_1"], changes: { parts: wider } },
+      ctx,
+    );
+    expect(world().nodes.lighthouse_1!.transform.scale).toEqual([4, 10, 4]);
+  });
+
+  it("a colour on a model is kept as its tint", async () => {
+    const { ctx, world } = setup();
+    await executeToolCall(
+      "add_objects",
+      {
+        objects: [
+          { id: "tent_1", name: "tent", asset_query: "tent", material: { color: "#cc2222" } },
+        ],
+      },
+      ctx,
+    );
+    expect(world().nodes.tent_1!.kind).toBe("asset");
+    expect(world().nodes.tent_1!.material?.color).toBe("#cc2222");
+  });
+
   it("returns a readable error for invalid input and unknown tools", async () => {
     const { ctx } = setup();
     const bad = await executeToolCall(

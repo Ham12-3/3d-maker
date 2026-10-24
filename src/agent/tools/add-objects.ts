@@ -2,14 +2,17 @@ import { z } from "zod";
 import { getKitModel } from "@/assets/catalog";
 import { toAssetRef, type AssetCandidate } from "@/assets/types";
 import { solvePlacements, type PlacementItem } from "@/layout/solver";
+import { partsFrame } from "@/scene/parts";
 import { nextNodeId } from "@/scene/ops";
 import {
   MaterialSchema,
   NodeIdSchema,
+  PartSchema,
   PrimitiveShapeSchema,
   RelationSchema,
   SceneNodeSchema,
   Vec3Schema,
+  type Part,
   type PrimitiveShape,
   type SceneNode,
   type Vec3,
@@ -37,11 +40,23 @@ const ObjectSpec = z.object({
   shape: PrimitiveShapeSchema.optional().describe(
     "Primitive to use instead of a model (abstract shapes), or the fallback if no model is found",
   ),
+  parts: z
+    .array(PartSchema)
+    .min(1)
+    .max(40)
+    .optional()
+    .describe(
+      "Design a custom object from shapes instead of using a model: anything the model library lacks, " +
+        "or when the user wants specific colours or details. Metres, relative to the object's ground centre; " +
+        "the object faces +z. Use 3-25 parts, low-poly and readable.",
+    ),
   size: SizeSchema.optional().describe(
     "[width, height, depth] in metres, real-world scale. Models keep their proportions and fit this height.",
   ),
   count: z.number().int().min(1).max(20).optional().describe("How many copies (default 1)"),
-  material: MaterialSchema.optional().describe("Primitives only"),
+  material: MaterialSchema.optional().describe(
+    "Primitives: their material. Models: material.color tints the whole model",
+  ),
   tags: z.array(z.string()).max(8).optional().describe("e.g. ['furniture','wood']"),
   relations: z
     .array(RelationSchema)
@@ -65,15 +80,18 @@ const AQUATIC = new Set(["boat", "canoe", "kayak", "raft", "lily", "water", "duc
 
 export type Resolved =
   | { kind: "asset"; candidate: AssetCandidate; note?: string }
-  | { kind: "primitive"; shape: PrimitiveShape; note?: string };
+  | { kind: "primitive"; shape: PrimitiveShape; note?: string }
+  | { kind: "custom"; parts: Part[]; note?: string };
 
 export const addObjectsTool = defineTool({
   name: "add_objects",
   pending: "Adding objects",
   eagerInputStreaming: true,
   description: [
-    "Add one or more objects. For real things (cabin, tree, bench, lantern, boat...) give asset_query and a realistic size;",
+    "Add one or more objects. For common real things (cabin, tree, bench, lantern, boat...) give asset_query and a realistic size;",
     "a low-poly model is found automatically (bundled kit first, then an online library). Use shape for abstract primitives.",
+    "For anything else (a windmill, lighthouse, rocket, robot, car, statue, giant mushroom house...) or when exact colours matter,",
+    "design it with parts: shapes with positions, rotations, sizes and colours, so you can make any object.",
     "Describe placement with relations (next_to, near, on_top_of, around, facing, left_of, in_front_of, along_edge_of, inside_region...) or a region;",
     "a layout solver computes exact coordinates, snaps to the terrain, keeps land things out of lakes and avoids overlaps. Do not invent coordinates.",
     "With no relations, objects go near the user's pointer (or the centre of the view).",
@@ -144,15 +162,23 @@ export const addObjectsTool = defineTool({
               ...base,
               kind: "asset",
               asset: toAssetRef(res.candidate),
+              ...(spec.material?.color ? { material: { color: spec.material.color } } : {}),
               tags: [...new Set([...(spec.tags ?? []), ...res.candidate.tags.slice(0, 4)])],
             }
-          : {
-              ...base,
-              kind: "primitive",
-              primitive: res.shape,
-              ...(spec.material ? { material: spec.material } : {}),
-              tags: [...new Set([...(spec.tags ?? []), res.shape])],
-            };
+          : res.kind === "custom"
+            ? {
+                ...base,
+                kind: "group",
+                parts: res.parts,
+                tags: [...new Set([...(spec.tags ?? []), "custom"])],
+              }
+            : {
+                ...base,
+                kind: "primitive",
+                primitive: res.shape,
+                ...(spec.material ? { material: spec.material } : {}),
+                tags: [...new Set([...(spec.tags ?? []), res.shape])],
+              };
       const valid = SceneNodeSchema.safeParse(node);
       if (!valid.success) {
         return {
@@ -173,7 +199,9 @@ export const addObjectsTool = defineTool({
       const source =
         res.kind === "asset"
           ? ` model "${res.candidate.name}" (${res.candidate.source}, ${res.candidate.license})`
-          : ` ${res.shape}`;
+          : res.kind === "custom"
+            ? ` custom (${res.parts.length} parts)`
+            : ` ${res.shape}`;
       const issues = p.unsatisfied.length
         ? ` (could not satisfy: ${p.unsatisfied.join("; ")})`
         : "";
@@ -192,6 +220,7 @@ export const addObjectsTool = defineTool({
 });
 
 async function resolveSpec(spec: Spec, ctx: ToolContext): Promise<Resolved> {
+  if (spec.parts) return { kind: "custom", parts: spec.parts };
   if (spec.asset_id) {
     const c = ctx.candidates.get(spec.asset_id) ?? kitCandidate(spec.asset_id);
     if (c) return { kind: "asset", candidate: c };
@@ -203,7 +232,11 @@ async function resolveSpec(spec: Spec, ctx: ToolContext): Promise<Resolved> {
   }
   if (spec.shape) return { kind: "primitive", shape: spec.shape };
   const wanted = spec.asset_query ?? spec.asset_id ?? spec.name;
-  return { kind: "primitive", shape: "box", note: `no model found for "${wanted}", used a box` };
+  return {
+    kind: "primitive",
+    shape: "box",
+    note: `no model found for "${wanted}", used a box. Replace it with a parts design (update isn't enough: remove it and add_objects with parts).`,
+  };
 }
 
 function kitCandidate(assetId: string): AssetCandidate | undefined {
@@ -229,7 +262,8 @@ function kitCandidate(assetId: string): AssetCandidate | undefined {
  */
 export function sizeFor(spec: Pick<Spec, "size">, res: Resolved): Vec3 {
   if (res.kind === "primitive") return (spec.size ?? [1, 1, 1]) as Vec3;
-  const known = res.candidate.size;
+  // Custom objects are designed in metres: their natural size, or that fitted into `size`.
+  const known = res.kind === "custom" ? partsFrame(res.parts).size : res.candidate.size;
   if (known) {
     const k = spec.size
       ? Math.min(spec.size[0] / known[0], spec.size[1] / known[1], spec.size[2] / known[2])

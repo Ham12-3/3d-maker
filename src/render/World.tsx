@@ -10,6 +10,7 @@ import { waterKey } from "@/scene/terrain";
 import { EXPORT_ROOT } from "./exporter";
 import { Ghosts } from "./Ghosts";
 import { AssetModel } from "./nodes/AssetModel";
+import { CustomObject } from "./nodes/CustomObject";
 import { Fireflies } from "./nodes/Fireflies";
 import { Lake } from "./nodes/Lake";
 import { PathRibbon } from "./nodes/PathRibbon";
@@ -64,8 +65,10 @@ function NodeView({ id }: { id: string }) {
       return <AssetModel node={node} selected={selected} onSelect={onSelect} />;
     case "procedural":
       return <Procedural node={node} onSelect={onSelect} />;
+    case "group":
+      return <CustomObject node={node} selected={selected} onSelect={onSelect} />;
     default:
-      // light, group and particles renderers arrive in later phases.
+      // light and particles nodes have no renderer yet.
       return null;
   }
 }

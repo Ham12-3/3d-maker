@@ -3,7 +3,8 @@ import { z } from "zod";
 import { searchKit } from "@/assets/catalog";
 import { solvePlacements, type PlacementItem } from "@/layout/solver";
 import { patchEnvironment } from "@/scene/ops";
-import { RelationSchema, type Vec3 } from "@/scene/schema";
+import { partsFrame } from "@/scene/parts";
+import { PartSchema, RelationSchema, type Vec3 } from "@/scene/schema";
 import { planFeatureArea } from "./tools/add-procedural";
 import { getTool } from "./tools";
 import type { ToolContext } from "./tools/types";
@@ -56,6 +57,7 @@ const PartialObject = z.looseObject({
   name: z.string().min(1),
   asset_query: z.string().optional(),
   shape: z.string().optional(),
+  parts: z.array(z.unknown()).optional(),
   size: z.tuple([z.number(), z.number(), z.number()]).optional(),
   count: z.number().int().min(1).max(20).optional(),
   relations: z.array(RelationSchema).optional(),
@@ -197,6 +199,12 @@ export class StreamPreview {
 }
 
 function ghostSize(spec: z.infer<typeof PartialObject>): Vec3 {
+  // A design still streaming in: size it from the parts finished so far.
+  const parts = (spec.parts ?? []).flatMap((p) => {
+    const part = PartSchema.safeParse(p);
+    return part.success ? [part.data] : [];
+  });
+  if (parts.length > 0 && !spec.size) return partsFrame(parts).size;
   const kit = spec.asset_query ? searchKit(spec.asset_query, 1)[0]?.size : undefined;
   if (kit) {
     const k = spec.size ? spec.size[1] / kit[1] : 1;

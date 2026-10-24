@@ -37,8 +37,8 @@ src/
     tools/        One file per tool: zod schema + description + executor; index.ts = registry
   assets/         Kenney catalog + search, Poly Pizza client, GLB normalisation, load status
   layout/         Solver, predicates, regions, spatial hash, scatter (instanced nature), paths
-  scene/          World schema, default world, store, ops, terrain (height field + lake/river carving, water queries)
-  render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, exporter, nodes/ (Primitive, AssetModel, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/ (shots, director store, CameraRig, recording, RecordFrames)
+  scene/          World schema, default world, store, ops, terrain (height field + lake/river carving, water queries), parts (custom-object bounds)
+  render/         R3F: Stage, World, Terrain, SkySystem, Sea, Weather, RegionFlash, capture, exporter, nodes/ (Primitive, AssetModel, CustomObject, Scatter, Lake, River, water, PathRibbon, Fireflies), camera/ (shots, director store, CameraRig, recording, RecordFrames)
   share/          Share ids/tokens, WorldRepo (Supabase REST or dev file store), save/update, server loader, browser client
   ui/             CommandBar, Toolbar, TopBar (Polish, Director, Share, Credits), DirectorPanel, ShareMenu, StageFrame, Viewer, Credits, DevPanel, DevOverlay, shortcuts
   voice/          Transcriber interface, OpenAI (WebRTC) and Web Speech engines, push-to-talk controller, useVoice
@@ -74,7 +74,7 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 - **Auto-framing:** if a turn adds a lake or forest and Claude didn't call `set_camera`, the client plays an establishing shot of the whole scene, never further back than the fog lets you see (`fogVisibility`).
 - Each command is a fresh conversation: user message = scene summary + `COMMAND: ...`. History is append-only within a turn.
 - Tool executors are pure functions over a `ToolContext` (no React/globals; asset search injected), so tests and evals run them headless. Inputs are always zod-validated; failures go back as `is_error` tool results.
-- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, river, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `save_macro`, `apply_macro`, `capture_view`, `set_camera`, `say`, and `escalate` (fast model only).
+- Tools: `set_environment`, `add_procedural` (forest, rocks, grass, flowers, lake, river, path, fireflies), `add_objects` (`asset_query` / `asset_id` / `shape` / `parts`), `update_objects`, `remove_objects`, `create_region`, `search_assets`, `save_macro`, `apply_macro`, `capture_view`, `set_camera`, `say`, and `escalate` (fast model only).
 - **Model routing** (`agent/config.ts`): profiles `sonnet`, `sonnet-nothink`, `haiku`, `haiku-nothink`; the app runs `ROUTING` = Haiku 5.5 first. Haiku may call `escalate` (first and alone) for multi-part compositions or whole-scene restyles; the loop rolls back anything already done and reruns the command from the original message on Sonnet 5.5. The client sends the profile name to `/api/agent`, which only accepts known names. `TurnResult.model` / `escalated` record who handled it.
 - **Streaming previews** (`agent/preview.ts`): all creating tools and `set_environment` use `eager_input_streaming`. On each `inputJson` snapshot only the finished part is used (every key/element but the last): finished `set_environment` fields are applied inside the turn's transaction (the sky starts turning early), and `add_objects` / `add_procedural` show ghost boxes / discs / rings (`render/Ghosts.tsx`) at solved positions until the tool runs. `TurnResult.firstVisibleMs` = first preview or real change.
 
@@ -98,6 +98,13 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 - **Vercel project `speakworld`** (team ham12-3s-projects), live at https://speakworld-navy.vercel.app. It is connected to GitHub `Ham12-3/3d-maker`: every push to master deploys production, and other branches get previews. No database: on Vercel, sharing uses link-packed worlds.
 - Environment variables are set in the Vercel dashboard (`ANTHROPIC_API_KEY`, `POLYPIZZA_API_KEY`, optionally `OPENAI_API_KEY` and the `AGENT_*` limits); a redeploy picks up changes. `vercel link` also wrote `VERCEL_OIDC_TOKEN` into `.env.local` (git-ignored).
 - CI: the evals job needs the `ANTHROPIC_API_KEY` repository secret; without it, it skips with a notice.
+
+## Custom objects (design anything)
+
+- Anything the model library lacks, Claude designs from shapes: `add_objects` with `parts` (`PartSchema` in `scene/schema.ts`). A part is box, sphere, cylinder (`taper`), cone, torus (flat), capsule, lathe (`profile` of [radius, height]), extrude (`outline` of [x, y], thickness = size z) or tube (`path`), with position (centre, metres from the object's ground centre), rotation (degrees), size, `segments`, colour, roughness/metalness, `emissive` and opacity. The node is `kind: "group"` with `parts`.
+- `scene/parts.ts` computes bounds (rotation included) and `partsFrame` (natural size + offset to bottom-centre). The tool sets `transform.scale` to the natural size (or fits it uniformly into `size`), so the solver, judge, "make it bigger" and export treat it like any object. `render/nodes/CustomObject.tsx` builds three.js geometries per part and normalises them to the unit box.
+- `update_objects` takes `parts` (the full redesigned list, keeping the height) for partial recolours; `material.color` on a model tints it (`TINT_STRENGTH` 0.85 in AssetModel).
+- The system prompt lists what the bundled kit has, the design rules and a worked windmill example (a test checks the example is valid). If a model search fails, the tool result tells Claude to replace the box with a design.
 
 ## Assets
 
@@ -148,6 +155,7 @@ Planned (not built yet): local Whisper engine (optional), autosave of the editor
 
   Earlier single-profile runs (10 simple cases): Haiku 1.23 s to first change vs Sonnet 1.85 s; Sonnet with `between_tools` was slower (2.34 s), so it is not used.
 
+- Custom objects run (17 cases, adds a red-and-white lighthouse by the lake and a rocket at the pointer, both designed from parts): 17/17, valid tool calls 97.5%, first visible p50 1.4 s, total p50 2.1 s, $0.072 (longer prompt). Designed objects take 6-10 s (many output tokens).
 - Phase 7 run (same 15 cases, after the share/Director tools changed): 15/15, valid tool calls 97%, first visible p50 1.5 s, total p50 1.7 s, 2 escalations, $0.023.
 - Phase 5 run (15 cases, adds "save this village, make another by the river", winter wonderland, naming a region; cases may have `setup` commands that run first, chained via `previousTurn`): 15/15, valid tool calls 97%, first visible p50 1.2 s, total p50 2.1 s, 2 escalations, $0.045.
 - `pnpm test` skips evals; vitest `--mode evals` (or `EVALS=1`) enables them.

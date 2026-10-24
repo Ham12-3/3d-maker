@@ -2,7 +2,7 @@
 
 import { useGLTF } from "@react-three/drei";
 import { Component, Suspense, useMemo, useRef, type ReactNode } from "react";
-import { BoxGeometry, EdgesGeometry, Matrix4, Mesh, type Group } from "three";
+import { BoxGeometry, Color, EdgesGeometry, Matrix4, Mesh, type Group } from "three";
 import { fitScale, normaliseModel } from "@/assets/loader";
 import { useAssetStatus } from "@/assets/status";
 import type { SceneNode, Vec3 } from "@/scene/schema";
@@ -42,7 +42,7 @@ export function AssetModel({
       {url && (
         <AssetErrorBoundary url={url} fallback={<Ghost broken />}>
           <Suspense fallback={<Ghost />}>
-            <Model url={url} box={node.transform.scale} />
+            <Model url={url} box={node.transform.scale} tint={node.material?.color} />
           </Suspense>
         </AssetErrorBoundary>
       )}
@@ -55,20 +55,34 @@ export function AssetModel({
   );
 }
 
-function Model({ url, box }: { url: string; box: Vec3 }) {
+/** How strongly a tint replaces the model's own colours (keeps some shading detail). */
+const TINT_STRENGTH = 0.85;
+
+function Model({ url, box, tint }: { url: string; box: Vec3; tint?: string }) {
   const { scene } = useGLTF(url);
   const model = normaliseModel(scene);
 
   const content = useMemo(() => {
     const clone = scene.clone(true);
+    const target = tint ? new Color(tint) : null;
     clone.traverse((o) => {
       if (o instanceof Mesh) {
         o.castShadow = true;
         o.receiveShadow = true;
+        // Tinted models get their own materials (the loaded ones are shared).
+        if (target) {
+          const tinted = (Array.isArray(o.material) ? o.material : [o.material]).map((m) => {
+            const copy = m.clone();
+            if ("color" in copy && copy.color instanceof Color)
+              copy.color.lerp(target, TINT_STRENGTH);
+            return copy;
+          });
+          o.material = Array.isArray(o.material) ? tinted : tinted[0];
+        }
       }
     });
     return clone;
-  }, [scene]);
+  }, [scene, tint]);
 
   // The parent is scaled to the box; undo that per axis and apply one uniform fit.
   const matrix = useMemo(() => {

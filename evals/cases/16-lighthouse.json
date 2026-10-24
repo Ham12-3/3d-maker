@@ -1,0 +1,10 @@
+{
+  "name": "red and white lighthouse (designed object)",
+  "world": "lake",
+  "command": "add a red and white striped lighthouse by the lake",
+  "assert": [
+    { "check": "custom", "tag": "lighthouse", "minParts": 4, "colors": ["red", "white"] },
+    { "check": "near", "tag": "lighthouse", "target": "lake_1", "max": 30, "newOnly": true },
+    { "check": "dry" }
+  ]
+}

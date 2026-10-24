@@ -59,7 +59,9 @@ function nodeLine(n: SceneNode): string {
       ? `primitive ${n.primitive}`
       : n.kind === "asset"
         ? `model(${n.asset?.source})`
-        : n.kind;
+        : n.kind === "group"
+          ? `custom(${n.parts?.length ?? 0} parts)`
+          : n.kind;
   const size = nodeSize(n)
     .map((v) => +v.toFixed(1))
     .join("x");

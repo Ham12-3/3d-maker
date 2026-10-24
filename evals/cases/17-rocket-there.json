@@ -1,0 +1,10 @@
+{
+  "name": "rocket ship there (designed object at the pointer)",
+  "world": "default",
+  "pointer": [10, 0, 4],
+  "command": "put a rocket ship there",
+  "assert": [
+    { "check": "custom", "tag": "rocket", "minParts": 4 },
+    { "check": "near", "tag": "rocket", "target": "10,4", "max": 5, "newOnly": true }
+  ]
+}
