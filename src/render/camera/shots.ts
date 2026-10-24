@@ -1,4 +1,5 @@
 import type { CameraState, Vec3 } from "@/scene/schema";
+import { WORLD_HALF_EXTENT } from "@/scene/terrain";
 
 /**
  * Camera shots as pure maths: turn "establishing shot of the cabin" into a
@@ -48,6 +49,8 @@ export type Focus = {
 };
 
 const DEG = Math.PI / 180;
+/** Cameras stay this far inside the terrain's edge (beyond it there is only sky). */
+const EDGE_MARGIN = 15;
 
 /**
  * How far you can see through exp2 fog before things are more than half
@@ -71,6 +74,10 @@ export function computeShot(
 ): CameraMove {
   const [fx, fy, fz] = focus.center;
   const fit = Math.sqrt(Math.max(1, 1.2 / aspect));
+  // Never stand back so far that the camera leaves the world (an orbit of a
+  // big scene would otherwise swing out past the terrain's edge).
+  const inside = WORLD_HALF_EXTENT - EDGE_MARGIN - Math.max(Math.abs(fx), Math.abs(fz));
+  maxDistance = Math.min(maxDistance, Math.max(20, inside));
   // Keep the viewer on the side they're already looking from.
   const azimuth = Math.atan2(camera.position[0] - fx, camera.position[2] - fz);
   const lookAt: Vec3 = [fx, fy + focus.height * 0.4, fz];

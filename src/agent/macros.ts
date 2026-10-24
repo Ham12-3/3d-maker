@@ -9,6 +9,8 @@ import type { RecordedStep } from "./tools/types";
  * - everything outside it (a lake, the pointer, "x,z" points) is "$anchor".
  * Applying binds the anchor ("by the river") and picks fresh ids, then runs
  * the steps through the normal tools, so the solver places everything anew.
+ * Water built in the same command is the setting, not the thing (see
+ * `withoutSetting`), so it becomes the anchor too.
  */
 
 export type MacroStep = Macro["steps"][number];
@@ -18,7 +20,8 @@ const REF_KEYS = new Set(["target", "region", "from", "to"]);
 const ANCHOR = "$anchor";
 
 /** Turn the steps a command recorded into a portable recipe. */
-export function generaliseSteps(steps: RecordedStep[], world: World): MacroStep[] {
+export function generaliseSteps(recorded: RecordedStep[], world: World): MacroStep[] {
+  const steps = withoutSetting(recorded);
   const placeholder = new Map<string, string>();
   const used = new Set<string>();
   const nameFor = (id: string) => {
@@ -72,6 +75,43 @@ export function generaliseSteps(steps: RecordedStep[], world: World): MacroStep[
     });
   }
   return out;
+}
+
+const WATER = new Set(["lake", "river"]);
+
+/**
+ * "A campsite by a lake" saved as a recipe is the campsite: re-applying it
+ * "on the other side of the lake" or "by the river" must not dig another
+ * lake. Lakes and rivers, and nature features placed relative to them (a
+ * forest around the lake), are left out; references to them become the
+ * anchor. A recipe that is only setting (just a lake) is kept whole.
+ */
+function withoutSetting(steps: RecordedStep[]): RecordedStep[] {
+  const water = new Set<string>();
+  const drop = new Set<RecordedStep>();
+  for (const step of steps) {
+    const type = (step.input as { type?: string } | null)?.type;
+    if (step.tool === "add_procedural" && type && WATER.has(type)) {
+      drop.add(step);
+      step.created.forEach((id) => water.add(id));
+    }
+  }
+  for (const step of steps) {
+    if (step.tool === "add_procedural" && refsOf(step.input).some((r) => water.has(r))) {
+      drop.add(step);
+    }
+  }
+  const kept = steps.filter((s) => !drop.has(s));
+  return kept.some((s) => s.tool !== "set_environment") ? kept : steps;
+}
+
+function refsOf(input: unknown): string[] {
+  const refs: string[] = [];
+  walk(structuredClone(input), (key, value) => {
+    if (REF_KEYS.has(key)) refs.push(value);
+    return value;
+  });
+  return refs;
 }
 
 export type Anchor = { target: string; predicate?: Relation["predicate"]; distance?: number };

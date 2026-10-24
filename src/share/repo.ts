@@ -27,14 +27,14 @@ export interface WorldRepo {
 }
 
 /**
- * Supabase when configured. In development without keys, worlds are saved as
- * files in `.data/` so sharing still works locally. Production without keys
- * has no storage (the routes answer 503).
+ * Supabase when configured. Otherwise worlds are saved as files in `.data/`,
+ * which works for `pnpm dev` and `pnpm start` on one machine. Vercel's
+ * filesystem doesn't persist, so there sharing needs Supabase (routes answer 503).
  */
 export function getRepo(): WorldRepo | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (url && key) return supabaseRepo(url, key);
-  if (process.env.NODE_ENV !== "production") return fileRepo(path.join(process.cwd(), ".data"));
+  if (!process.env.VERCEL) return fileRepo(path.join(process.cwd(), ".data"));
   return null;
 }

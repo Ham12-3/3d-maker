@@ -35,6 +35,30 @@ describe("director shots", () => {
     expect(foggy.radius).toBeLessThanOrEqual(15);
   });
 
+  it("keeps every shot of a huge scene inside the world", () => {
+    const huge: Focus = { center: [-20, 0, -25], radius: 60, height: 6 };
+    for (const kind of ["establishing", "orbit", "flyover", "reveal", "push_in"] as const) {
+      const shot = computeShot(kind, huge, camera, undefined, Infinity, 9 / 16);
+      const points =
+        shot.kind === "tween"
+          ? [shot.position]
+          : shot.kind === "path"
+            ? shot.points
+            : Array.from({ length: 16 }, (_, i) => {
+                const a = shot.startAngle + (i / 16) * Math.PI * 2;
+                return [
+                  shot.target[0] + Math.sin(a) * shot.radius,
+                  0,
+                  shot.target[2] + Math.cos(a) * shot.radius,
+                ];
+              });
+      for (const p of points) {
+        expect(Math.abs(p[0]!), kind).toBeLessThan(120);
+        expect(Math.abs(p[2]!), kind).toBeLessThan(120);
+      }
+    }
+  });
+
   it("a cut starts exactly on the move's first frame", () => {
     const orbit = withCut(computeShot("orbit", focus, camera));
     expect(orbit).toMatchObject({ cut: true });

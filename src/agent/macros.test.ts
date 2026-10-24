@@ -134,6 +134,48 @@ describe("macros", () => {
     }
   });
 
+  it("leaves the lake (and the forest around it) behind as the setting", async () => {
+    const { ctx, world } = setup();
+    await executeToolCall("remove_objects", { tag: "demo" }, ctx);
+    await executeToolCall(
+      "add_procedural",
+      {
+        type: "lake",
+        id: "lake_1",
+        radius: 9,
+        relations: [{ predicate: "behind", target: "origin" }],
+      },
+      ctx,
+    );
+    await executeToolCall(
+      "add_procedural",
+      { type: "forest", radius: 20, relations: [{ predicate: "around", target: "lake_1" }] },
+      ctx,
+    );
+    await executeToolCall(
+      "add_objects",
+      {
+        objects: [
+          {
+            id: "tent_1",
+            name: "tent",
+            shape: "cone",
+            size: [3, 2, 3],
+            relations: [{ predicate: "near", target: "lake_1", distance: 4 }],
+          },
+        ],
+      },
+      ctx,
+    );
+    const steps = generaliseSteps(ctx.recorder!, world());
+    expect(steps.map((s) => s.tool)).toEqual(["add_objects"]);
+    expect(JSON.stringify(steps)).toContain('"target":"$anchor"');
+
+    // Just a lake is still a valid recipe.
+    const lakeOnly = generaliseSteps(ctx.recorder!.slice(0, 1), world());
+    expect(lakeOnly).toHaveLength(1);
+  });
+
   it("refuses to save when nothing was built", async () => {
     const { ctx } = setup();
     expect((await executeToolCall("save_macro", { name: "nothing" }, ctx)).isError).toBe(true);
